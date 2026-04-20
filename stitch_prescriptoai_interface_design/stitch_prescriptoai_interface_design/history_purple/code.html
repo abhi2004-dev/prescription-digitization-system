@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;family=Manrope:wght@200;300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#1d0061",
+                        "on-primary": "#ffffff",
+                        "surface-container-highest": "#dfe3e7",
+                        "surface-bright": "#f6fafe",
+                        "surface-container-low": "#f0f4f8",
+                        "background": "#f6fafe",
+                        "secondary-fixed": "#68fadd",
+                        "tertiary-container": "#c9b9ff",
+                        "primary-fixed-dim": "#cbbeff",
+                        "on-tertiary-container": "#591adc",
+                        "inverse-on-surface": "#edf1f5",
+                        "tertiary": "#6833ea",
+                        "surface-container": "#eaeef2",
+                        "outline-variant": "#bbc9cf",
+                        "on-secondary-fixed-variant": "#005145",
+                        "on-primary-fixed": "#1d0061",
+                        "primary-fixed": "#eaddff",
+                        "surface-container-high": "#e4e9ed",
+                        "surface": "#f6fafe",
+                        "inverse-primary": "#cbbeff",
+                        "on-background": "#171c1f",
+                        "on-secondary-fixed": "#00201a",
+                        "primary-container": "#6750a4",
+                        "tertiary-fixed": "#e8deff",
+                        "on-tertiary-fixed-variant": "#4f00d0",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#3c494e",
+                        "on-secondary": "#ffffff",
+                        "surface-tint": "#6750a4",
+                        "secondary-fixed-dim": "#44ddc1",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#cdbdff",
+                        "on-secondary-container": "#007261",
+                        "on-tertiary-fixed": "#20005f",
+                        "on-error-container": "#93000a",
+                        "secondary": "#006b5c",
+                        "surface-dim": "#d6dade",
+                        "on-tertiary": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#171c1f",
+                        "inverse-surface": "#2c3134",
+                        "on-primary-fixed-variant": "#4f378b",
+                        "outline": "#6c797f",
+                        "secondary-container": "#68fadd",
+                        "primary": "#6750a4",
+                        "error": "#ba1a1a",
+                        "surface-variant": "#dfe3e7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Manrope"],
+                        "label": ["Manrope"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="bg-[#f6fafe]/70 backdrop-blur-[20px] docked full-width top-0 sticky z-50 shadow-[0_4px_30px_rgba(103,80,164,0.05)]">
+<div class="flex justify-between items-center px-6 py-4 w-full max-w-screen-xl mx-auto">
+<div class="flex items-center gap-4">
+<button class="text-[#6750a4] hover:bg-[#6750a4]/10 transition-all p-2 rounded-full active:opacity-80 scale-95 duration-300">
+<span class="material-symbols-outlined" data-icon="menu">menu</span>
+</button>
+<h1 class="text-xl font-black tracking-widest text-[#6750a4] uppercase font-headline">PrescriptoAI</h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container/20">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Stylized 3D avatar of a professional user with glasses and a friendly expression on a soft blue background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLlsT79MpUeUhm3ne2RtOeTTIRWdzjOXFGXcjFtxAea3LMUm6vYcTksf0-lOEWZGCDc45Vd75WM6o4D1pa6CDYHsQ3fHLqb1edkpFx4UpG1swnzSaqlP9ieijiAOAMB_hpirfAAyWgsUSOcww1ZB0wmkDmtebZzs-gyfHEUS-r1Iu_Lc1vq0JkI_y8TTJ30zNnwo4wEj1lvFF-Tesa7P10LbbruyhCS_5H9CLeVzOuwvCwHLt6WIICUxra_dAJV3bywWi4Y74lii_D"/>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 pt-8">
+<!-- Hero Search Section -->
+<div class="mb-12 relative">
+<div class="absolute top-0 right-0 -z-10 w-64 h-64 bg-primary-container/10 opacity-10 blur-[80px] rounded-full"></div>
+<h2 class="font-headline text-4xl font-bold tracking-tight text-on-surface mb-2">Medical History</h2>
+<p class="font-body text-on-surface-variant text-lg mb-8 max-w-md">Access your analyzed prescriptions and digital health archive.</p>
+<div class="relative group max-w-2xl">
+<div class="absolute inset-y-0 left-5 flex items-center pointer-events-none text-[#6750a4]">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</div>
+<input class="w-full pl-14 pr-6 py-5 bg-surface-container-lowest rounded-full border-none shadow-[0_8px_30px_rgba(0,0,0,0.04)] focus:ring-2 focus:ring-primary/40 transition-all text-body-md placeholder:text-outline-variant outline-none" placeholder="Search prescriptions, medicines, or dates..." type="text"/>
+<div class="absolute inset-y-2 right-2">
+<button class="h-full px-6 bg-gradient-to-br from-[#6750a4] to-[#4f378b] text-on-primary rounded-full font-semibold text-sm tracking-wide uppercase shadow-[0_4px_15px_rgba(103,80,164,0.3)] hover:scale-105 transition-transform">
+                    Filter
+                </button>
+</div>
+</div>
+</div>
+<!-- History Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Prescription Card 1 -->
+<div class="group relative glass-card rounded-[32px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-white/50 hover:shadow-[0_20px_50px_rgba(103,80,164,0.1)] transition-all duration-500 overflow-hidden">
+<div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-[100px]"></div>
+<div class="flex gap-4 mb-6">
+<div class="w-20 h-24 rounded-2xl overflow-hidden bg-surface-container shadow-inner">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-700" data-alt="Close-up of a paper medical prescription with handwriting and official stamps on a wooden table surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANDRjk9jCr70ZZQUPfmCOcvodgTDMlnBoSVvc8GD_cv9RsWqDAgCyI3zPc6F7PacrzHXHTdZsv3QxMVTOd-zNS_Wk2nxowlNTkqODKIfwZM0EVtDqFsh0YFDluAzaiGsMDCdiU3hvyU2vQGKg6CPBQRieTYtJ4hoVbUabPMTn_w4Z-_YfJvFTF62dC2obL-ZguHn8Qq6eL7kjetLcdVsWmz1XQs6PL9eyQkDqEp9Hfs2uGVcdugMRc_S27gaVH632mGb38bvv3HzvC"/>
+</div>
+<div class="flex flex-col justify-center">
+<span class="text-[10px] font-bold text-primary uppercase tracking-[0.2em] mb-1">Oct 24, 2023</span>
+<h3 class="font-headline text-xl font-bold text-on-surface leading-tight">Post-Op Recovery</h3>
+<div class="flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-xs font-semibold text-on-surface-variant">AI Verified</span>
+</div>
+</div>
+</div>
+<div class="space-y-3 bg-surface-container-low/50 p-4 rounded-2xl">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Medicine</span>
+<span class="text-xs font-bold text-on-surface">Amoxicillin 500mg</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Dosage</span>
+<span class="text-xs font-bold text-on-surface">1 Tab • 3x Daily</span>
+</div>
+</div>
+<button class="w-full mt-5 py-3 rounded-xl bg-surface-container-highest/50 text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-all">
+                View Full Analysis
+            </button>
+</div>
+<!-- Prescription Card 2 -->
+<div class="group relative glass-card rounded-[32px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-white/50 hover:shadow-[0_20px_50px_rgba(103,80,164,0.1)] transition-all duration-500 overflow-hidden">
+<div class="flex gap-4 mb-6">
+<div class="w-20 h-24 rounded-2xl overflow-hidden bg-surface-container shadow-inner">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-700" data-alt="Digital tablet displaying a medical chart with pills and a stethoscope resting nearby in a clean clinic setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuADE6SKziVQfQC2RNUcL6Q2VZL-Ntl1zZw9ijNX4vOk7rWKsRZkXHowN8vxP3IzD4aJ-Roy8Ziht5qSvzeaVy2SiAm-zeCseVcD-OGcfAKIgr7JdPZKSGLCHVXLUyeJi13o0CMfiWAVqhe_he8sgFXb4G6jvYBCm8lNAZVkFgDokumaQbSvwiHY52ceYzDjsrt3AAiBYyDtt8AuucoSae8am5eYwENkgfgmSX4Of-5rA3Dl7SOGUPRWHvx11gDHgk_MMmRpm_zYJ0rI"/>
+</div>
+<div class="flex flex-col justify-center">
+<span class="text-[10px] font-bold text-primary uppercase tracking-[0.2em] mb-1">Sep 12, 2023</span>
+<h3 class="font-headline text-xl font-bold text-on-surface leading-tight">Seasonal Allergy</h3>
+<div class="flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-xs font-semibold text-on-surface-variant">AI Verified</span>
+</div>
+</div>
+</div>
+<div class="space-y-3 bg-surface-container-low/50 p-4 rounded-2xl">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Medicine</span>
+<span class="text-xs font-bold text-on-surface">Cetirizine 10mg</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Dosage</span>
+<span class="text-xs font-bold text-on-surface">1 Tab • Nightly</span>
+</div>
+</div>
+<button class="w-full mt-5 py-3 rounded-xl bg-surface-container-highest/50 text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-all">
+                View Full Analysis
+            </button>
+</div>
+<!-- AI Insight Card (Specialized) -->
+<div class="relative bg-gradient-to-br from-[#6750a4] to-[#1d0061] rounded-[32px] p-6 text-white overflow-hidden shadow-xl lg:row-span-2">
+<div class="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+<div class="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-secondary-fixed to-transparent"></div>
+<div class="flex items-center gap-3 mb-6">
+<div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary-fixed" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+</div>
+<span class="font-headline font-bold uppercase tracking-widest text-xs">Smart Summary</span>
+</div>
+<h4 class="text-2xl font-headline font-bold mb-4">Adherence Report</h4>
+<p class="text-primary-fixed/80 text-sm leading-relaxed mb-6">You've successfully completed 85% of your prescribed treatments over the last 6 months. Your respiratory health shows a 12% improvement trend.</p>
+<div class="space-y-4">
+<div class="bg-white/10 p-4 rounded-2xl backdrop-blur-sm border border-white/5">
+<div class="flex justify-between text-[10px] uppercase font-black tracking-widest mb-2 opacity-70">Next Refill</div>
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed" data-icon="pill">pill</span>
+<span class="font-bold">Lisinopril • 14 Days Left</span>
+</div>
+</div>
+</div>
+<div class="mt-8 pt-8 border-t border-white/10">
+<div class="flex items-center gap-4">
+<div class="flex-1">
+<div class="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed w-[85%] rounded-full shadow-[0_0_10px_rgba(104,250,221,0.5)]"></div>
+</div>
+</div>
+<span class="font-headline font-bold text-lg">85%</span>
+</div>
+</div>
+</div>
+<!-- Prescription Card 3 -->
+<div class="group relative glass-card rounded-[32px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-white/50 hover:shadow-[0_20px_50px_rgba(103,80,164,0.1)] transition-all duration-500 overflow-hidden">
+<div class="flex gap-4 mb-6">
+<div class="w-20 h-24 rounded-2xl overflow-hidden bg-surface-container shadow-inner">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-700" data-alt="Modern medical laboratory equipment with blue and cyan lighting, featuring a high-tech microscopic view and chemical flasks" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBbQ0qAYWQFhJJm-TMWtYyWiBc7e9jJDHr9vMsmOW9Foe9i1Q_eWn3EGMoSkcxU9nWMUnjl2QBWyPnwK942jRRuZlTbFGihQJTACwlExDKWPFGaUrIgjcrW9cPQxkPvG5HaBNVVxWgUZm1WwIP7uy_Uh6ozdZD2IkNvStjCAkkf0EiZFO-VZ-1pXiMWLYr331aBoUKpfREXJ1TMdtWn5U7dlANO7HG4QFN9xKKcRHNBaov9HOPniq__rVBdNbVwmbqFKB3_FstylHk"/>
+</div>
+<div class="flex flex-col justify-center">
+<span class="text-[10px] font-bold text-primary uppercase tracking-[0.2em] mb-1">Aug 05, 2023</span>
+<h3 class="font-headline text-xl font-bold text-on-surface leading-tight">Cardio Maintenance</h3>
+<div class="flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-xs font-semibold text-on-surface-variant">AI Verified</span>
+</div>
+</div>
+</div>
+<div class="space-y-3 bg-surface-container-low/50 p-4 rounded-2xl">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Medicine</span>
+<span class="text-xs font-bold text-on-surface">Atorvastatin 20mg</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Dosage</span>
+<span class="text-xs font-bold text-on-surface">1 Tab • Nightly</span>
+</div>
+</div>
+<button class="w-full mt-5 py-3 rounded-xl bg-surface-container-highest/50 text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-all">
+                View Full Analysis
+            </button>
+</div>
+<!-- Prescription Card 4 -->
+<div class="group relative glass-card rounded-[32px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-white/50 hover:shadow-[0_20px_50px_rgba(103,80,164,0.1)] transition-all duration-500 overflow-hidden">
+<div class="flex gap-4 mb-6">
+<div class="w-20 h-24 rounded-2xl overflow-hidden bg-surface-container shadow-inner">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-700" data-alt="Doctor's white coat and stethoscope with a medical chart in the background under bright clinic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6jqawku26YCBoZ6EqUlBnXjfbJ9e1TC_Ah77dU-xtS8oxsdE4pwRbHAuKU4UHY7b_XhOP-LPhxfy-8uZfXo3yflJg9FNdgYxqgSJloFynuIcJdDtzhCWjJlGtcLIlQU9KIQP75RHsE5j-0MkZt2vL6l4-tGjbRDEcCcJJKlMAk5onbZs7LtquA-8SP7Pp4OO8-KJ07AS38y7__nQ3ifHrERDE-9hMzTGbMeZpI8sXuiphX2O2EYRGafECqoyyixEHPpb5g76R3utH"/>
+</div>
+<div class="flex flex-col justify-center">
+<span class="text-[10px] font-bold text-primary uppercase tracking-[0.2em] mb-1">Jul 28, 2023</span>
+<h3 class="font-headline text-xl font-bold text-on-surface leading-tight">Vitamin D Support</h3>
+<div class="flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="text-xs font-semibold text-on-surface-variant">AI Verified</span>
+</div>
+</div>
+</div>
+<div class="space-y-3 bg-surface-container-low/50 p-4 rounded-2xl">
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Supplement</span>
+<span class="text-xs font-bold text-on-surface">D3 5000 IU</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-xs font-bold text-outline uppercase tracking-wider">Frequency</span>
+<span class="text-xs font-bold text-on-surface">Weekly</span>
+</div>
+</div>
+<button class="w-full mt-5 py-3 rounded-xl bg-surface-container-highest/50 text-on-surface-variant font-bold text-xs uppercase tracking-widest hover:bg-primary hover:text-white transition-all">
+                View Full Analysis
+            </button>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 bg-[#ffffff]/80 backdrop-blur-[25px] flex justify-around items-center px-4 pb-6 pt-3 rounded-t-[32px] shadow-[0_-8px_40px_rgba(0,0,0,0.04)]">
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#6750a4] transition-colors scale-92" href="#">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#6750a4] transition-colors scale-92" href="#">
+<span class="material-symbols-outlined" data-icon="add_a_photo">add_a_photo</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Scan</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#6750a4] to-[#4f378b] text-white rounded-2xl px-5 py-2 shadow-[0_0_15px_rgba(103,80,164,0.4)]" href="#">
+<span class="material-symbols-outlined" data-icon="history_edu">history_edu</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Records</span>
+</a>
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#6750a4] transition-colors scale-92" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Profile</span>
+</a>
+</nav>
+</body></html>

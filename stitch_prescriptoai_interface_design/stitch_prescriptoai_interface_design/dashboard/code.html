@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PrescriptoAI - Luminous Intelligence Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;family=Manrope:wght@200;300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-primary-container": "#00586b",
+                      "on-primary": "#ffffff",
+                      "surface-container-highest": "#dfe3e7",
+                      "surface-bright": "#f6fafe",
+                      "surface-container-low": "#f0f4f8",
+                      "background": "#f6fafe",
+                      "secondary-fixed": "#68fadd",
+                      "tertiary-container": "#c9b9ff",
+                      "primary-fixed-dim": "#3cd7ff",
+                      "on-tertiary-container": "#591adc",
+                      "inverse-on-surface": "#edf1f5",
+                      "tertiary": "#6833ea",
+                      "surface-container": "#eaeef2",
+                      "outline-variant": "#bbc9cf",
+                      "on-secondary-fixed-variant": "#005145",
+                      "on-primary-fixed": "#001f27",
+                      "primary-fixed": "#b4ebff",
+                      "surface-container-high": "#e4e9ed",
+                      "surface": "#f6fafe",
+                      "inverse-primary": "#3cd7ff",
+                      "on-background": "#171c1f",
+                      "on-secondary-fixed": "#00201a",
+                      "primary-container": "#00d4ff",
+                      "tertiary-fixed": "#e8deff",
+                      "on-tertiary-fixed-variant": "#4f00d0",
+                      "on-error": "#ffffff",
+                      "on-surface-variant": "#3c494e",
+                      "on-secondary": "#ffffff",
+                      "surface-tint": "#00677e",
+                      "secondary-fixed-dim": "#44ddc1",
+                      "surface-container-lowest": "#ffffff",
+                      "tertiary-fixed-dim": "#cdbdff",
+                      "on-secondary-container": "#007261",
+                      "on-tertiary-fixed": "#20005f",
+                      "on-error-container": "#93000a",
+                      "secondary": "#006b5c",
+                      "surface-dim": "#d6dade",
+                      "on-tertiary": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "on-surface": "#171c1f",
+                      "inverse-surface": "#2c3134",
+                      "on-primary-fixed-variant": "#004e5f",
+                      "outline": "#6c797f",
+                      "secondary-container": "#68fadd",
+                      "primary": "#00677e",
+                      "error": "#ba1a1a",
+                      "surface-variant": "#dfe3e7"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "fontFamily": {
+                      "headline": ["Space Grotesk"],
+                      "body": ["Manrope"],
+                      "label": ["Manrope"]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        .glass-morphism {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .neon-glow-bg {
+            background: radial-gradient(circle at top right, rgba(104, 250, 221, 0.08), transparent 40%);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #00677e 0%, #00d4ff 100%);
+        }
+        .pulse-effect {
+            box-shadow: 0 0 0 0 rgba(0, 212, 255, 0.4);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container min-h-screen neon-glow-bg">
+<!-- Top Navigation Bar -->
+<header class="bg-[#f6fafe]/70 backdrop-blur-[20px] shadow-[0_4px_30px_rgba(0,212,255,0.05)] docked full-width top-0 sticky z-50">
+<div class="flex justify-between items-center px-6 py-4 w-full max-w-screen-xl mx-auto">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[#00677e] text-2xl hover:bg-[#00d4ff]/10 p-2 rounded-full transition-all cursor-pointer">menu</span>
+<span class="text-xl font-black tracking-widest text-[#00677e] uppercase font-headline">PrescriptoAI</span>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container/20 hover:scale-95 transition-all duration-300 cursor-pointer">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Close-up portrait of a professional man with a kind expression and neat hair in a clean studio setting with soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDWlf3_DLU7QyveGQ75pcFq4G0KYGEiBrm6Ix1pM1c3f5ddkinUnGToT_QAKMT2f0qjUjlOZFxyWK22noRSUUV0MVHp0IpseX1wqGC7oXdoEMv1fjMEBnXBFcbrPQDJdRF5JrFEPgK0WigHlc4xZC1g7xa7kR5Ngm57m-wvecu2LRs2mR8FgqQAbimu6MJTTIZCNhSGwUP4onMD1oQAK1d7d8-NOy2BCVGXw6UsFULxAWr4BVinBLNKGCgpb-bZbrUpoApJSZq5ODQS"/>
+</div>
+</div>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 pt-10 pb-32">
+<!-- Welcome Header -->
+<section class="mb-12">
+<p class="text-label uppercase tracking-[0.3em] text-outline font-bold text-[10px] mb-2">INTELLIGENT HEALTH ASSISTANT</p>
+<h1 class="font-headline font-bold text-4xl lg:text-6xl text-on-surface tracking-tight">
+                Hello, <span class="text-primary italic">Alexander</span>
+</h1>
+<p class="text-on-surface-variant mt-4 text-lg max-w-lg leading-relaxed">
+                Your medical analysis is updated. Upload a new prescription or review your clinical history below.
+            </p>
+</section>
+<!-- Bento Grid Main Actions -->
+<section class="grid grid-cols-1 md:grid-cols-12 gap-6 mb-16">
+<!-- Upload Card -->
+<div class="md:col-span-8 group relative overflow-hidden primary-gradient rounded-[32px] p-8 lg:p-12 flex flex-col justify-between min-h-[340px] shadow-[0_20px_50px_rgba(0,103,126,0.2)] hover:shadow-[0_25px_60px_rgba(0,212,255,0.3)] transition-all duration-500 cursor-pointer">
+<div class="absolute top-0 right-0 p-12 opacity-10 group-hover:opacity-20 transition-opacity">
+<span class="material-symbols-outlined text-[180px] font-thin" style="font-variation-settings: 'FILL' 0;">add_a_photo</span>
+</div>
+<div>
+<div class="inline-flex items-center gap-2 px-4 py-1.5 bg-white/20 backdrop-blur-md rounded-full mb-6 border border-white/10">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed animate-pulse"></span>
+<span class="text-[10px] font-bold text-white tracking-widest uppercase">AI Vision Active</span>
+</div>
+<h2 class="font-headline font-bold text-3xl lg:text-5xl text-white tracking-tight leading-[1.1]">
+                        Upload <br/>Prescription
+                    </h2>
+</div>
+<div class="flex items-center gap-4">
+<div class="bg-white text-primary px-8 py-3.5 rounded-full font-bold text-sm hover:scale-105 transition-transform active:scale-95 flex items-center gap-2">
+                        Start Scanning
+                        <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- History Card -->
+<div class="md:col-span-4 bg-surface-container-lowest glass-morphism rounded-[32px] p-8 flex flex-col justify-between shadow-[0_8px_40px_rgba(0,0,0,0.02)] border border-white/40 hover:border-primary-container/30 transition-all duration-500 cursor-pointer group">
+<div class="w-14 h-14 rounded-2xl bg-surface-container-low flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors duration-500">
+<span class="material-symbols-outlined text-3xl">history_edu</span>
+</div>
+<div>
+<h3 class="font-headline font-bold text-2xl text-on-surface mb-2">View History</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed">Access your past 12 months of digital records and insights.</p>
+</div>
+<div class="flex items-center justify-between mt-6">
+<span class="text-primary font-bold text-sm tracking-tight">24 RECORDS</span>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary group-hover:translate-x-1 transition-all">chevron_right</span>
+</div>
+</div>
+</section>
+<!-- Recent Prescriptions Section -->
+<section>
+<div class="flex justify-between items-end mb-8">
+<div>
+<h3 class="font-headline font-bold text-2xl text-on-surface">Recent Analysis</h3>
+<p class="text-on-surface-variant text-sm">Last updated 2 hours ago</p>
+</div>
+<button class="text-primary text-sm font-bold hover:underline underline-offset-4">SEE ALL</button>
+</div>
+<!-- Horizontal Scroll Area -->
+<div class="flex gap-6 overflow-x-auto hide-scrollbar pb-8 -mx-6 px-6">
+<!-- Card 1 -->
+<div class="flex-none w-[280px] bg-surface-container-lowest rounded-3xl overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.03)] group hover:translate-y-[-4px] transition-all duration-300">
+<div class="h-44 relative overflow-hidden">
+<img alt="Amoxicillin Analysis" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="Top down photo of medical capsules spilling out of a white plastic bottle onto a clean clinical surface with soft shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBywhe8olABjIoIoL9hRlIjjf_dLMuhCuWOC3FuXeUm8qoX85fizvOZAWG11ABl8_5uaTy_PYiBEu1yFDS2KYJrUUVTMFkWHnjyoRQV6i-Mvf0xJQNNW49NtCQOAgDYrvuNry8B1Ju4jrVOwq6cGQpo_9qSk9fVcOl-PkSwFbHgr3IF8gs1viQGEB4jgotVvZyWS5tj0ZEMHYIqetIx4EaEQnky7mMDEd65ZsQNoNS7XTAj79ObZuRyz9yz7PnxVRbskb5Eq7bsQmoV"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+<div class="absolute bottom-4 left-4">
+<span class="bg-secondary-fixed text-on-secondary-fixed text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Antibiotic</span>
+</div>
+</div>
+<div class="p-6">
+<p class="text-label text-[10px] font-bold text-outline uppercase tracking-widest mb-1">Oct 12, 2023</p>
+<h4 class="font-headline font-bold text-lg text-on-surface mb-4">Amoxicillin 500mg</h4>
+<div class="flex items-center gap-2 text-[11px] text-on-surface-variant font-semibold">
+<span class="material-symbols-outlined text-sm text-secondary">check_circle</span>
+                            AI Verified Accuracy
+                        </div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="flex-none w-[280px] bg-surface-container-lowest rounded-3xl overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.03)] group hover:translate-y-[-4px] transition-all duration-300">
+<div class="h-44 relative overflow-hidden">
+<img alt="Lisinopril Analysis" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="Macro photography of white round medical tablets with precise indentations on a minimalist blue surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlQBIJB98sTQGqIN5PtlvyhrgJQfWTxKJQvaSGitkOwheM4bjkM1IOnfTTuU2_3WL2Uc_0tQYjZv3olfFkXd98GlyJjGmUSei_IEJwLLb_Q8F3Zc4-W2eaqsnpod1CSTDgw2vipT5SU8u5ab_nv6KjusNojbsSpXUchtw4kgrwFJZwGqKj1QIAclpYOV5C-7fzU_ImIQSAItyhvJJZLrddtc4rClAOM1qhAgst8EoF44wOLMUOuwAXU9EZ0lj0MRtoK9gZQV58Ku_4"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+<div class="absolute bottom-4 left-4">
+<span class="bg-primary-fixed text-on-primary-fixed text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Blood Pressure</span>
+</div>
+</div>
+<div class="p-6">
+<p class="text-label text-[10px] font-bold text-outline uppercase tracking-widest mb-1">Oct 05, 2023</p>
+<h4 class="font-headline font-bold text-lg text-on-surface mb-4">Lisinopril 10mg</h4>
+<div class="flex items-center gap-2 text-[11px] text-on-surface-variant font-semibold">
+<span class="material-symbols-outlined text-sm text-secondary">check_circle</span>
+                            AI Verified Accuracy
+                        </div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="flex-none w-[280px] bg-surface-container-lowest rounded-3xl overflow-hidden shadow-[0_12px_32px_rgba(0,0,0,0.03)] group hover:translate-y-[-4px] transition-all duration-300">
+<div class="h-44 relative overflow-hidden">
+<img alt="Metformin Analysis" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="Blister pack of silver foil medicine on a bright white background with clean harsh lighting and clinical shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCk60JSvy2Cft0mFpldr-ju4kxU0vpL1F_-hQfjEys4dO5kX5KG0IPO1bb7ZE5nvHBC5unKm4g4Tno_EJ3CEH1ADyIOlqHAmLULbD3H3blm6csq4Gpo1qxjDTTD205eZtS5hmHMB00iGOljdS50_LrjZ2MmAm-zbJZFe2-cP1AwJEoPbxaa005hX38FOaAFPP9MYoaBCOTRtze9bVdg5bDcqixbkfsSH9Vq9dJ4sK7u2cS86g5oihv4lAl1ZReLSaPy-cV3cF6femsw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+<div class="absolute bottom-4 left-4">
+<span class="bg-tertiary-fixed text-on-tertiary-fixed text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">Metabolic</span>
+</div>
+</div>
+<div class="p-6">
+<p class="text-label text-[10px] font-bold text-outline uppercase tracking-widest mb-1">Sep 28, 2023</p>
+<h4 class="font-headline font-bold text-lg text-on-surface mb-4">Metformin 850mg</h4>
+<div class="flex items-center gap-2 text-[11px] text-on-surface-variant font-semibold">
+<span class="material-symbols-outlined text-sm text-secondary">check_circle</span>
+                            AI Verified Accuracy
+                        </div>
+</div>
+</div>
+</div>
+</section>
+<!-- Stats Section (Asymmetric Editorial Layout) -->
+<section class="mt-8 flex flex-col lg:flex-row gap-8 items-start">
+<div class="flex-1 bg-surface-container-low p-10 rounded-[40px] relative overflow-hidden">
+<div class="relative z-10">
+<p class="text-label text-[11px] font-bold text-primary uppercase tracking-[0.2em] mb-4">Insight of the week</p>
+<h3 class="font-headline font-bold text-3xl text-on-surface mb-6 max-w-sm">"Consistent medication adherence improved your health markers by 12%."</h3>
+<div class="flex items-center gap-6">
+<div class="flex flex-col">
+<span class="text-4xl font-headline font-black text-on-surface">12%</span>
+<span class="text-[10px] font-bold text-outline uppercase">Improvement</span>
+</div>
+<div class="w-px h-10 bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-4xl font-headline font-black text-on-surface">94%</span>
+<span class="text-[10px] font-bold text-outline uppercase">Adherence</span>
+</div>
+</div>
+</div>
+<!-- Decorative element -->
+<div class="absolute -right-10 -bottom-10 w-48 h-48 bg-primary-container/10 rounded-full blur-3xl"></div>
+</div>
+<div class="lg:w-1/3 flex flex-col gap-4">
+<div class="bg-secondary-fixed/10 p-6 rounded-[24px] border border-secondary-fixed/20">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined text-secondary">verified</span>
+<span class="text-xs font-bold text-secondary-fixed-variant uppercase tracking-wider">Health Shield Active</span>
+</div>
+<p class="text-sm text-on-secondary-fixed-variant font-medium">All analyzed prescriptions are checked against 1.2M global drug interactions.</p>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="bg-[#ffffff]/80 backdrop-blur-[25px] fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 shadow-[0_-8px_40px_rgba(0,0,0,0.04)] rounded-t-[32px] overflow-hidden">
+<!-- Home (Active) -->
+<a class="flex flex-col items-center justify-center bg-gradient-to-br from-[#00677e] to-[#00d4ff] text-white rounded-2xl px-5 py-2 shadow-[0_0_15px_rgba(0,212,255,0.4)] scale-92 transition-all" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">grid_view</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest">Home</span>
+</a>
+<!-- Scan -->
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#00677e] transition-colors" href="#">
+<span class="material-symbols-outlined mb-1">add_a_photo</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest">Scan</span>
+</a>
+<!-- Records -->
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#00677e] transition-colors" href="#">
+<span class="material-symbols-outlined mb-1">history_edu</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest">Records</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-[#bbc9cf] px-5 py-2 hover:text-[#00677e] transition-colors" href="#">
+<span class="material-symbols-outlined mb-1">account_circle</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest">Profile</span>
+</a>
+</nav>
+</body></html>
