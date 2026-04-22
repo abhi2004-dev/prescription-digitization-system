@@ -1,0 +1,51 @@
+drug_1,drug_2,severity,warning_message
+Amoxicillin,Warfarin,high,Amoxicillin may increase the blood-thinning effect of Warfarin. Increased risk of bleeding.
+Amoxicillin,Methotrexate,high,Amoxicillin may increase Methotrexate toxicity. Monitor blood counts closely.
+Amoxicillin,Ibuprofen,moderate,May reduce effectiveness of Amoxicillin. Monitor closely.
+Aspirin,Ibuprofen,high,Taking both increases risk of stomach bleeding significantly. Avoid combination.
+Aspirin,Warfarin,high,Extremely high bleeding risk. Do not combine without medical supervision.
+Aspirin,Clopidogrel,moderate,Increased bleeding risk. Only combine under cardiologist supervision.
+Aspirin,Metformin,low,Aspirin may slightly increase hypoglycemic effect of Metformin.
+Atorvastatin,Clarithromycin,high,Risk of severe muscle damage (rhabdomyolysis). Avoid combination.
+Atorvastatin,Erythromycin,high,Risk of rhabdomyolysis. Use alternative antibiotic.
+Atorvastatin,Amlodipine,moderate,Increased risk of muscle pain. Limit Atorvastatin to 20mg when combined.
+Atorvastatin,Warfarin,moderate,Atorvastatin may increase Warfarin effect. Monitor INR.
+Azithromycin,Warfarin,moderate,May increase bleeding risk. Monitor INR closely.
+Azithromycin,Amiodarone,high,Risk of dangerous heart rhythm changes (QT prolongation).
+Cetirizine,Alprazolam,moderate,Both cause drowsiness. Increased sedation risk.
+Cetirizine,Diazepam,moderate,Both cause drowsiness. Increased sedation and impaired alertness.
+Ciprofloxacin,Warfarin,high,Ciprofloxacin significantly increases Warfarin effect. High bleeding risk.
+Ciprofloxacin,Metformin,moderate,May alter blood sugar levels. Monitor glucose closely.
+Ciprofloxacin,Theophylline,high,Ciprofloxacin increases Theophylline levels. Risk of seizures.
+Clopidogrel,Omeprazole,high,Omeprazole reduces effectiveness of Clopidogrel. Use Pantoprazole instead.
+Clopidogrel,Aspirin,moderate,Increased bleeding risk. Only combine under medical supervision.
+Diclofenac,Warfarin,high,High risk of gastrointestinal bleeding. Avoid combination.
+Diclofenac,Aspirin,high,Both are NSAIDs. Doubled risk of stomach ulcers and bleeding.
+Diclofenac,Metformin,moderate,NSAIDs may reduce kidney function affecting Metformin clearance.
+Diclofenac,Lisinopril,moderate,NSAIDs reduce blood pressure lowering effect of ACE inhibitors.
+Fluoxetine,Tramadol,high,Risk of serotonin syndrome (potentially fatal). Avoid combination.
+Fluoxetine,Warfarin,high,Fluoxetine increases bleeding risk with Warfarin significantly.
+Furosemide,Lisinopril,moderate,May cause excessive drop in blood pressure. Monitor BP.
+Furosemide,Metformin,moderate,Furosemide may increase blood sugar. Monitor glucose.
+Gabapentin,Tramadol,high,Both depress the central nervous system. Risk of respiratory depression.
+Ibuprofen,Warfarin,high,Significant bleeding risk. Avoid this combination.
+Ibuprofen,Aspirin,high,Both are NSAIDs. Very high risk of GI bleeding and ulcers.
+Ibuprofen,Lisinopril,moderate,Ibuprofen reduces the blood pressure lowering effect of Lisinopril.
+Ibuprofen,Metformin,moderate,NSAIDs may affect kidney function and Metformin clearance.
+Losartan,Spironolactone,high,Both retain potassium. Risk of dangerous hyperkalemia.
+Losartan,Ibuprofen,moderate,NSAIDs reduce blood pressure lowering effect of Losartan.
+Metformin,Furosemide,moderate,Furosemide may increase blood sugar counteracting Metformin.
+Metformin,Atenolol,moderate,Beta-blockers may mask symptoms of low blood sugar.
+Metformin,Prednisone,high,Prednisone raises blood sugar significantly. May make Metformin ineffective.
+Metoprolol,Verapamil,high,Both slow heart rate. Risk of severe bradycardia or heart block.
+Metoprolol,Amlodipine,moderate,Additive blood pressure lowering. Monitor for dizziness.
+Omeprazole,Clopidogrel,high,Omeprazole significantly reduces Clopidogrel effectiveness.
+Paracetamol,Warfarin,moderate,Regular Paracetamol use may increase Warfarin effect. Monitor INR.
+Pantoprazole,Methotrexate,moderate,May increase Methotrexate levels. Monitor for toxicity.
+Prednisolone,Ibuprofen,high,Very high risk of stomach ulcers and GI bleeding.
+Prednisolone,Aspirin,high,Both increase GI bleeding risk. Use gastric protection.
+Sertraline,Tramadol,high,Risk of serotonin syndrome. Avoid this combination.
+Sertraline,Warfarin,moderate,Sertraline may increase bleeding risk with Warfarin.
+Simvastatin,Amlodipine,moderate,Increased risk of muscle problems. Limit Simvastatin to 20mg.
+Tramadol,Alprazolam,high,Both depress CNS and breathing. Risk of respiratory failure.
+Warfarin,Paracetamol,moderate,Regular Paracetamol use may increase bleeding risk with Warfarin.

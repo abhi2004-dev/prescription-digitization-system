@@ -1,1 +1,1 @@
-# Medicine Extraction Package
+# Medicine extraction package
