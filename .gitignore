@@ -1,3 +1,26 @@
+# === PrescriptoAI Specific ===
+temp_uploads/
+prescripto.db
+*.db
+debug_*.png
+Docker Desktop Installer.exe
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# === ML Model Cache ===
+*.pt
+*.bin
+*.safetensors
+.cache/
+
 # Logs
 logs
 *.log

@@ -3,11 +3,30 @@ import numpy as np
 from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 import sys
+import logging
+import os
 
-print("Loading TrOCR model...")
-processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
-model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
-print("Model loaded.")
+logger = logging.getLogger(__name__)
+
+# --- Lazy Model Loading ---
+# Model path is configurable via environment variable.
+# Default: pre-built model. Swap to custom model by changing this value.
+MODEL_NAME = os.environ.get("TROCR_MODEL_PATH", "microsoft/trocr-base-handwritten")
+
+_processor = None
+_model = None
+
+
+def get_model():
+    """Lazy-load the TrOCR model on first use. Subsequent calls return cached instances."""
+    global _processor, _model
+    if _processor is None or _model is None:
+        logger.info(f"Loading TrOCR model: {MODEL_NAME} (this takes 30-60 seconds on first run)...")
+        _processor = TrOCRProcessor.from_pretrained(MODEL_NAME)
+        _model = VisionEncoderDecoderModel.from_pretrained(MODEL_NAME)
+        logger.info("Model loaded successfully.")
+    return _processor, _model
+
 
 
 def crop_paper(gray):
@@ -69,10 +88,12 @@ def get_word_crops(line_img, binary_line):
 
 
 def run_trocr(img_array):
+    """Run TrOCR inference on a single image crop."""
+    proc, mdl = get_model()
     pil_img = Image.fromarray(img_array).convert("RGB")
-    pixel_values = processor(pil_img, return_tensors="pt").pixel_values
-    generated_ids = model.generate(pixel_values, max_new_tokens=32)
-    return processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+    pixel_values = proc(pil_img, return_tensors="pt").pixel_values
+    generated_ids = mdl.generate(pixel_values, max_new_tokens=32)
+    return proc.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
 
 
 def extract_text(image_path):
@@ -95,7 +116,7 @@ def extract_text(image_path):
     h_proj = np.sum(binary, axis=1) // 255
     threshold = paper.shape[1] * 0.01
     line_spans = get_spans(h_proj, threshold, min_gap=10)
-    print(f"--- Debug: Found {len(line_spans)} lines ---")
+    logger.info(f"Found {len(line_spans)} text lines in image")
 
     full_text = []
     for i, (y1, y2) in enumerate(line_spans):
@@ -105,7 +126,7 @@ def extract_text(image_path):
         binary_line = binary[y1p:y2p, :]
 
         word_crops = get_word_crops(line_img, binary_line)
-        print(f"Line {i+1}: {len(word_crops)} words", end=" => ")
+        logger.debug(f"Line {i+1}: {len(word_crops)} word crops")
 
         words = []
         for wc in word_crops:
@@ -114,12 +135,12 @@ def extract_text(image_path):
                 words.append(t)
 
         line_text = " ".join(words)
-        print(line_text)
+        logger.debug(f"Line {i+1} text: {line_text}")
         if line_text.strip():
             full_text.append(line_text)
 
     if not full_text:
-        print("Fallback: scanning full image...")
+        logger.info("No lines detected, fallback: scanning full image")
         return run_trocr(paper)
 
     return "\n".join(full_text)

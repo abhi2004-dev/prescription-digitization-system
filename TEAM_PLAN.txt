@@ -1,0 +1,273 @@
+# PRESCRIPTO AI - TEAM WORKFLOW & TECHNICAL PLAN
+
+## 1. PROJECT OVERVIEW & COMPLETED WORK
+Our goal is to build "PrescriptoAI", a full-stack system that digitizes handwritten medical prescriptions, extracts medicines, and warns users about dangerous drug interactions.
+
+**What we have finished so far:**
+- The React Native Mobile App frontend is fully built (Login, Dashboard, Upload, History, Profile, PrescriptionDetails screens).
+- The frontend currently uses mock/fake data to display information.
+- We have a pre-built OCR Python script (`ocr/ocr_engine.py`) that uses Microsoft's TrOCR model for handwriting recognition.
+
+**Phase 1 scope (THIS SPRINT - 4 days):**
+- Backend API with OCR integration
+- Medicine extraction logic
+- Drug interaction checker
+- Frontend connected to real backend
+- Testing with clean handwriting (NOT doctor prescriptions yet)
+
+**Phase 2 scope (LATER):**
+- Doctor verification module (`doctor_verification/`)
+- Fake prescription detection (`fake_detection/`)
+- Voice readout feature (`voice/`)
+- JWT authentication & security hardening
+- Swap pre-built OCR with fine-tuned custom model
+- PostgreSQL migration
+
+---
+
+## 2. THE BEST STRATEGY & ARCHITECTURE PLAN
+
+### A. The Backend Framework (FastAPI)
+We will use **FastAPI** instead of Flask. Since our OCR inference is CPU-heavy and blocks the thread, we will use `run_in_executor()` to offload the ML processing to a thread pool so the server stays responsive for other requests.
+
+### B. The Database Strategy (SQLite -> PostgreSQL)
+We will use **SQLite** for Phase 1 while we build the app. It requires zero installation and saves as a single local file. In Phase 2, we will switch to **PostgreSQL**. Because we will use SQLAlchemy as our ORM, the switch only requires changing the database connection string.
+
+### C. The ML Parallel Development Strategy
+We will use the **pre-built TrOCR** model (`microsoft/trocr-base-handwritten`) immediately. This model reads clean handwriting well, which is perfect for testing the full app pipeline. Person 1 will train a custom model on real doctor prescription images using Google Colab in the background. When the custom model is ready, we swap the model path in the config — no other code changes needed.
+
+### D. The Testing Strategy
+For Phase 1 testing, we will write prescriptions in **clean, neat handwriting** on paper, photograph them, and use those images to test the full pipeline. This lets us verify that Backend → OCR → Extraction → Drug Check → Frontend all work correctly, without fighting messy handwriting accuracy issues.
+
+---
+
+## 3. TIMELINE (4 DAYS)
+
+| Day | Person 2 (Backend - Abhi) | Person 3 (Integration) | Person 1 (ML) |
+|-----|---------------------------|------------------------|----------------|
+| **Day 1** | Build FastAPI server with `/api/upload` endpoint. Return mock JSON first, then wire up real OCR. Fix `requirements.txt` and add `__init__.py` files. | Build medicine extraction function using sample OCR text strings (provided below). Build drug interaction CSV with 50 entries. | Set up Colab environment. Start collecting prescription images. |
+| **Day 2** | Build SQLAlchemy database models. Add `/api/history` endpoint. Test OCR with clean handwriting images. | Build drug interaction checker function. Test extraction + checker together using hardcoded text. | Label collected images. Begin fine-tuning TrOCR on Colab. |
+| **Day 3** | Integrate Person 3's extraction + drug checker into the `/api/upload` response. Add error handling. | Update React Native `UploadScreen.js` to call real API. Update `PrescriptionDetailsScreen.js` to display dynamic data. | Continue training. Evaluate CER metrics. |
+| **Day 4** | End-to-end testing. Fix bugs. Prepare demo with golden test images. | End-to-end testing from mobile app. Add loading spinner. Fix UI for real data. | Checkpoint model. Compare with pre-built model accuracy. |
+
+---
+
+## 4. TEAM ROLES
+
+* **PERSON 1 (ML TRAINER)**
+  Focus: Gather prescription images, label data, and train the custom TrOCR model on Google Colab. Has a helper for data collection.
+* **PERSON 2 (BACKEND CORE) — YOU (Abhi)**
+  Focus: Build the FastAPI server, setup SQLite database, and connect the pre-built OCR script to an API endpoint. You own the entire backend architecture, API design, and server infrastructure.
+* **PERSON 3 (INTEGRATION & LOGIC)**
+  Focus: Write Python logic to extract medicine names from OCR text, build the drug interaction database, and update the React Native app to fetch real data from Person 2's API.
+
+---
+
+## 5. THE API CONTRACT (CRITICAL — EVERYONE MUST USE THIS)
+
+This is the exact JSON format that the backend returns. Person 2 builds the API to return this. Person 3 builds the frontend to consume this. No deviations.
+
+### `POST /api/upload`
+**Request:** `multipart/form-data` with field `file` containing the prescription image.
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "raw_text": "Amoxicillin 500mg\nIbuprofen 200mg\nTake twice daily",
+  "medicines": [
+    {
+      "name": "Amoxicillin",
+      "dosage": "500mg",
+      "frequency": "twice daily"
+    },
+    {
+      "name": "Ibuprofen",
+      "dosage": "200mg",
+      "frequency": "twice daily"
+    }
+  ],
+  "warnings": [
+    {
+      "drug_1": "Amoxicillin",
+      "drug_2": "Ibuprofen",
+      "severity": "moderate",
+      "message": "May reduce effectiveness of Amoxicillin. Monitor closely."
+    }
+  ],
+  "prescription_id": 1
+}
+```
+
+**Response (error):**
+```json
+{
+  "success": false,
+  "error": "Could not read text from the image. Please upload a clearer image."
+}
+```
+
+### `GET /api/history`
+**Response:**
+```json
+{
+  "prescriptions": [
+    {
+      "id": 1,
+      "date": "2026-04-22T18:30:00",
+      "raw_text": "Amoxicillin 500mg...",
+      "medicine_count": 2,
+      "warning_count": 1
+    }
+  ]
+}
+```
+
+---
+
+## 6. SAMPLE OCR OUTPUT (For Person 3 to work independently)
+
+Person 3 does NOT need the backend running to start. Use these sample OCR outputs to build and test the medicine extraction function:
+
+**Sample 1 (clean):**
+```
+Amoxicillin 500mg
+Ibuprofen 200mg
+Take twice daily after meals
+```
+
+**Sample 2 (messy — real TrOCR output):**
+```
+Amoxicilin 500 mg
+Paracetamol 650mg tab
+1 tab 3x daily
+Cetirizine 10 mg at night
+```
+
+**Sample 3 (noisy — what bad handwriting produces):**
+```
+Anoxicillin 500mg
+Metforrnin 500mg
+Atorvastaten 20mg nightly
+```
+
+Person 3 should build their extraction function to handle all three cases. Use fuzzy matching against a known medicine list, not just exact regex.
+
+---
+
+## 7. TECHNICAL GUIDES: HOW TO DO THE WORK
+
+### A. How to add the pre-built OCR model for testing (For Person 2)
+1. Open `ocr/ocr_engine.py`. This script already downloads and runs a pre-trained model: `microsoft/trocr-base-handwritten`.
+2. **IMPORTANT:** Add an empty `__init__.py` file inside the `ocr/` folder. Without this, Python cannot import it as a package.
+3. In your FastAPI `main.py`, import it: `from ocr.ocr_engine import extract_text`.
+4. **IMPORTANT:** The model takes 30-60 seconds to load on first import. Use lazy loading — load the model only when the first request comes in, not at server startup. This makes the server start instantly.
+5. Since OCR is CPU-heavy and blocks the thread, wrap the call in `run_in_executor()` so the server stays responsive:
+   ```python
+   import asyncio
+   loop = asyncio.get_event_loop()
+   result = await loop.run_in_executor(None, extract_text, image_path)
+   ```
+6. Create a `/api/upload` route that accepts an image file via `multipart/form-data`.
+7. Save the uploaded image to a temp folder, pass its path to `extract_text()`, return the response matching the API contract above.
+8. Clean up temp files after processing.
+
+### B. How to make the database (For Person 2)
+1. Install: `pip install sqlalchemy`
+2. Create `database/db.py` with SQLAlchemy setup using SQLite.
+3. **IMPORTANT:** Add an empty `__init__.py` file inside the `database/` folder.
+4. Create these tables:
+   - `Users`: id, name, email, password_hash
+   - `Prescriptions`: id, user_id, image_url, raw_text, structured_medicines (JSON), interaction_warnings (JSON), status, created_at
+   - `DrugInteractions`: id, drug_1, drug_2, severity, warning_message
+
+### C. How to build extraction & drug checker (For Person 3 — NO backend dependency)
+1. **You can start immediately.** Use the sample OCR outputs in Section 6 above as test inputs.
+2. Build `medicine/extractor.py` — a Python function that takes raw OCR text and returns structured medicine JSON.
+3. Build `drug_interaction/checker.py` — a Python function that takes a list of medicines and checks them against a CSV of known interactions.
+4. Build `drug_interaction/interactions.csv` — start with 50 common harmful drug pairs.
+5. **IMPORTANT:** Add empty `__init__.py` files inside `medicine/` and `drug_interaction/` folders.
+6. Test your functions independently: `python -c "from medicine.extractor import extract_medicines; print(extract_medicines('Amoxicillin 500mg'))"`.
+7. When Person 2's backend is ready (Day 3), they will import your functions into the API endpoint.
+
+### D. How to connect the frontend to backend (For Person 3 — Day 3)
+1. In the React Native app, open `src/screens/UploadScreen.js`.
+2. Replace the `setTimeout` mock with a real `fetch` call using `FormData`.
+3. The response JSON matches the contract in Section 5 — use those exact field names.
+4. Pass the response to `PrescriptionDetailsScreen.js` via `navigation.navigate('PrescriptionDetails', { data: response })`.
+5. Rewrite `PrescriptionDetailsScreen.js` to render `data.medicines` and `data.warnings` dynamically instead of hardcoded values.
+6. **Android emulator:** Use `10.0.2.2:8000` instead of `localhost`. **Physical device:** Use your PC's LAN IP (e.g., `192.168.1.X:8000`).
+7. **DO NOT** set `Content-Type` header manually with FormData — `fetch` sets it automatically with the correct boundary.
+
+---
+
+## 8. HIGHLY DETAILED AI PROMPTS FOR THE TEAM
+
+Copy and paste these prompts to your AI assistant to help you get started on your specific tasks.
+
+### Prompt for Person 1 (ML Trainer):
+"Act as an expert Machine Learning Engineer specializing in Computer Vision and NLP. We are building an AI prescription digitizer. My specific role is to fine-tune Microsoft's `microsoft/trocr-base-handwritten` model on a custom dataset of handwritten medical prescriptions. I will be working on Google Colab. The frontend and backend teams are already handling the app infrastructure using the pre-built model, so I can focus purely on training.
+
+Please provide a comprehensive, step-by-step guide for:
+1. **Data Preparation:** Exactly how should I format my images and ground truth text files to be compatible with HuggingFace's `VisionEncoderDecoderModel` and `TrOCRProcessor`? TrOCR expects 384x384 pixel input images. Do I need a specific JSON/CSV structure?
+2. **Environment Setup:** What specific PyTorch and HuggingFace libraries do I need to install on Google Colab?
+3. **Training Script:** Write a highly optimized PyTorch training script to fine-tune the TrOCR model. Include data loaders, evaluation metrics (like CER - Character Error Rate), and model checkpoint saving. Save checkpoints to Google Drive.
+4. **Hardware Optimization:** How can I maximize GPU utilization on Google Colab's free tier (T4 GPU)?
+5. **Export:** When training is done, how do I export the model so it can be swapped into our backend by just changing the model path from `microsoft/trocr-base-handwritten` to my custom model folder?"
+
+### Prompt for Person 2 (Backend Core — Abhi):
+"Act as an expert Senior Backend Engineer. We are building an AI prescription digitizer called PrescriptoAI. The React Native (Expo) mobile frontend is finished. My role is to build the entire backend.
+
+We currently have:
+- A Python script `ocr/ocr_engine.py` with a function `extract_text(image_path)` that runs a pre-built TrOCR model. It loads the model at import time (takes 30-60s). The model runs on CPU.
+- A teammate (Person 3) is independently building `medicine/extractor.py` with `extract_medicines(raw_text)` and `drug_interaction/checker.py` with `check_interactions(medicines_list)`.
+
+Please help me build the backend with these specifications:
+1. **Framework:** FastAPI running on port 8000 with CORS middleware (allow all origins for development).
+2. **Model Loading:** Use lazy loading for the TrOCR model — do NOT load it at import time. Load it on the first request so the server starts instantly.
+3. **OCR Endpoint:** `POST /api/upload` — receives an image via `multipart/form-data` (field name: `file`), saves it to a temp directory, calls `extract_text()` using `run_in_executor()` so it doesn't block the async event loop, then calls Person 3's extraction and drug check functions, and returns this EXACT JSON:
+```json
+{
+  \"success\": true,
+  \"raw_text\": \"extracted text here\",
+  \"medicines\": [{\"name\": \"...\", \"dosage\": \"...\", \"frequency\": \"...\"}],
+  \"warnings\": [{\"drug_1\": \"...\", \"drug_2\": \"...\", \"severity\": \"...\", \"message\": \"...\"}],
+  \"prescription_id\": 1
+}
+```
+4. **History Endpoint:** `GET /api/history` — returns list of past prescriptions.
+5. **Database:** SQLAlchemy with SQLite. Tables: Users (id, name, email, password_hash), Prescriptions (id, user_id, image_url, raw_text, structured_medicines JSON, interaction_warnings JSON, status, created_at), DrugInteractions (id, drug_1, drug_2, severity, warning_message).
+6. **Error Handling:** If OCR fails or image is unreadable, return `{\"success\": false, \"error\": \"descriptive message\"}`.
+7. **File Cleanup:** Delete temp uploaded images after processing.
+8. **IMPORTANT:** Add empty `__init__.py` to `ocr/`, `database/`, `medicine/`, and `drug_interaction/` directories. Without these, Python imports will fail."
+
+### Prompt for Person 3 (Integration & Logic):
+"Act as an expert Full-Stack Developer and Data Engineer. We are building an AI prescription digitizer called PrescriptoAI. My role is to build the medicine extraction logic, drug interaction checker, and connect our React Native frontend to the backend.
+
+IMPORTANT: I can start Tasks 1 and 2 IMMEDIATELY without waiting for the backend. I only need the backend for Task 3 (Day 3).
+
+**Task 1: Medicine Extraction (Python — `medicine/extractor.py`)**
+Our OCR model outputs raw text strings. Write a Python function `extract_medicines(raw_text: str)` that takes this raw text and extracts medicine names and dosages into this exact format:
+```json
+[{\"name\": \"Amoxicillin\", \"dosage\": \"500mg\", \"frequency\": \"twice daily\"}]
+```
+Here are sample OCR outputs to test against:
+- Clean: `Amoxicillin 500mg\nIbuprofen 200mg\nTake twice daily after meals`
+- Messy: `Amoxicilin 500 mg\nParacetamol 650mg tab\n1 tab 3x daily`
+- Noisy: `Anoxicillin 500mg\nMetforrnin 500mg`
+Use fuzzy matching (not exact regex) against a known list of common medicine names to handle OCR misspellings. Use the `difflib` or `fuzzywuzzy` library.
+
+**Task 2: Drug Interaction Checker (Python — `drug_interaction/checker.py`)**
+Create a CSV file `drug_interaction/interactions.csv` with 50 common harmful drug interaction pairs. Format: `drug_1,drug_2,severity,warning_message`. Write a function `check_interactions(medicines: list)` that takes the output of Task 1, cross-references against the CSV, and returns:
+```json
+[{\"drug_1\": \"Amoxicillin\", \"drug_2\": \"Warfarin\", \"severity\": \"high\", \"message\": \"Increased bleeding risk\"}]
+```
+IMPORTANT: Add `__init__.py` files in `medicine/` and `drug_interaction/` directories.
+
+**Task 3: Frontend Integration (React Native — Day 3, after backend is ready)**
+Our mobile app uses Expo SDK 54. The backend API is at `http://<IP>:8000`. The API contract is:
+- `POST /api/upload` with `FormData` containing field `file` → returns `{success, raw_text, medicines[], warnings[], prescription_id}`
+- `GET /api/history` → returns `{prescriptions[]}`
+Update `UploadScreen.js`: Replace the `setTimeout` mock with a real `fetch` + `FormData` call. Add a loading spinner during processing.
+Update `PrescriptionDetailsScreen.js`: Replace all hardcoded medicine data with dynamic data from `route.params.data.medicines` and `route.params.data.warnings`.
+NOTE: On Android emulator use `10.0.2.2:8000`, on physical device use your PC's LAN IP. Do NOT manually set Content-Type header with FormData."
