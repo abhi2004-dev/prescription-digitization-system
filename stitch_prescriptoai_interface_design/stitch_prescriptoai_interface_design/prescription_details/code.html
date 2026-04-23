@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Prescription Details - PrescriptoAI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Manrope:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#00586b",
+                        "on-primary": "#ffffff",
+                        "surface-container-highest": "#dfe3e7",
+                        "surface-bright": "#f6fafe",
+                        "surface-container-low": "#f0f4f8",
+                        "background": "#f6fafe",
+                        "secondary-fixed": "#68fadd",
+                        "tertiary-container": "#c9b9ff",
+                        "primary-fixed-dim": "#3cd7ff",
+                        "on-tertiary-container": "#591adc",
+                        "inverse-on-surface": "#edf1f5",
+                        "tertiary": "#6833ea",
+                        "surface-container": "#eaeef2",
+                        "outline-variant": "#bbc9cf",
+                        "on-secondary-fixed-variant": "#005145",
+                        "on-primary-fixed": "#001f27",
+                        "primary-fixed": "#b4ebff",
+                        "surface-container-high": "#e4e9ed",
+                        "surface": "#f6fafe",
+                        "inverse-primary": "#3cd7ff",
+                        "on-background": "#171c1f",
+                        "on-secondary-fixed": "#00201a",
+                        "primary-container": "#00d4ff",
+                        "tertiary-fixed": "#e8deff",
+                        "on-tertiary-fixed-variant": "#4f00d0",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#3c494e",
+                        "on-secondary": "#ffffff",
+                        "surface-tint": "#00677e",
+                        "secondary-fixed-dim": "#44ddc1",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#cdbdff",
+                        "on-secondary-container": "#007261",
+                        "on-tertiary-fixed": "#20005f",
+                        "on-error-container": "#93000a",
+                        "secondary": "#006b5c",
+                        "surface-dim": "#d6dade",
+                        "on-tertiary": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "on-surface": "#171c1f",
+                        "inverse-surface": "#2c3134",
+                        "on-primary-fixed-variant": "#004e5f",
+                        "outline": "#6c797f",
+                        "secondary-container": "#68fadd",
+                        "primary": "#00677e",
+                        "error": "#ba1a1a",
+                        "surface-variant": "#dfe3e7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Manrope"],
+                        "label": ["Manrope"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-effect {
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background font-body text-on-surface selection:bg-primary-container selection:text-on-primary-container">
+<header class="bg-[#f6fafe]/70 backdrop-blur-[20px] dark:bg-slate-900/70 docked full-width top-0 sticky z-50 shadow-[0_4px_30px_rgba(0,212,255,0.05)]">
+<div class="flex justify-between items-center px-6 py-4 w-full max-w-screen-xl mx-auto">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-[#00677e] dark:text-[#00d4ff] hover:bg-[#00d4ff]/10 p-2 rounded-full transition-all active:scale-95">arrow_back</button>
+<h1 class="text-xl font-black tracking-widest text-[#00677e] dark:text-[#00d4ff] uppercase font-headline">PrescriptoAI</h1>
+</div>
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border-2 border-primary-container">
+<img class="w-full h-full object-cover" data-alt="close-up portrait of a professional male doctor in a clean clinical setting with soft natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDgNWZZvMDdYMrLsqICM2eOZIZSNEzpiHKvqHyjRpAzXpOm6bLUd_EjpKpcyI_16hW73oWgJh9KcEWWIvQaHSra7ySbvm6YQ4zsLs1ivikw4a5-9tRO6Vk1JB-agigUHoCqC0tfkz5bz3QL41Ccpj9Db8qFXO2thDi3w8xB5JyKuNmAemEdhBmloE7zi3oC8B93poyndRHPvRoyckr6Ij7DIkbnEWbLf5LgYx_qGjx7O2iQssSGBUHXn4jJD5LTJiiC0s8nE0XwCRrM"/>
+</div>
+</div>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 pt-8 pb-32 space-y-8">
+<section class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div class="space-y-1">
+<span class="font-headline font-bold text-xs tracking-widest text-primary uppercase">Identity Verification</span>
+<div class="flex items-center gap-3">
+<h2 class="font-headline text-3xl font-bold tracking-tight text-on-surface">PID-8829310</h2>
+<span class="px-3 py-1 bg-secondary-container text-on-secondary-container text-[10px] font-black uppercase tracking-tighter rounded-full">Verified AI</span>
+</div>
+<p class="text-on-surface-variant text-sm font-medium">Scanned on October 24, 2023 • 14:42 PM</p>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-5 py-2.5 bg-surface-container-lowest text-on-surface rounded-full font-bold text-sm shadow-sm hover:bg-surface-container-low transition-all active:scale-95 border border-outline-variant/10">
+<span class="material-symbols-outlined text-lg">share</span>
+                    Share
+                </button>
+<button class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-primary to-primary-container text-white rounded-full font-bold text-sm shadow-[0_4px_15px_rgba(0,212,255,0.3)] hover:opacity-90 transition-all active:scale-95">
+<span class="material-symbols-outlined text-lg">download</span>
+                    Export PDF
+                </button>
+</div>
+</section>
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<div class="lg:col-span-5 space-y-6">
+<div class="relative group">
+<div class="absolute -inset-1 bg-gradient-to-tr from-primary_container to-secondary_fixed opacity-20 blur-xl group-hover:opacity-30 transition duration-1000"></div>
+<div class="relative bg-surface-container-lowest rounded-[32px] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-white/40">
+<img class="w-full aspect-[3/4] object-cover" data-alt="high resolution close up of a handwritten medical prescription on white paper with professional lighting and shallow depth of field" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBiavyymbG1F4E8kBfJLshCzAqcDYF2UypwxVrTxytHCyBxo1OQLXB_TJSdtiFXz56BMhvP-OtR43BseonLgjCovg5-vF3o0O3scnALdyBBkTIQifF5Ledlhm3kmsFLZQFGM7Z_ivd2HfZi7PBpXZzByTrFreP90BGK2UFqo1EtbzMJ4maXvfBVVG-RZ810VTwmGXjiQOoSYS5rmaotkWonJFjW9uLKFjlWaDn3PrhksgHp-69Bu_i1F48pWSzkgT_LfpgFdfQ_3ASz"/>
+<div class="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/60 to-transparent">
+<span class="text-white/90 text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+                                Original Source Scan
+                            </span>
+</div>
+</div>
+</div>
+<details class="group bg-surface-container-low/50 glass-effect rounded-[24px] border border-outline-variant/5 overflow-hidden transition-all" open="">
+<summary class="flex items-center justify-between p-6 cursor-pointer list-none">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">description</span>
+<span class="font-headline font-bold tracking-tight">Extracted Raw Text</span>
+</div>
+<span class="material-symbols-outlined transition-transform group-open:rotate-180 text-outline">expand_more</span>
+</summary>
+<div class="px-6 pb-6 text-sm text-on-surface-variant font-medium leading-relaxed font-mono opacity-80 italic">
+                        "Rx: Amoxicillin 500mg tid x 7 days... Ibuprofen 400mg q6h prn pain... No known allergies... Refills: 0... Dr. Aris Thorne"
+                    </div>
+</details>
+</div>
+<div class="lg:col-span-7 space-y-8">
+<div class="bg-error-container/10 border-l-4 border-error p-6 rounded-r-[24px] rounded-l-lg flex items-start gap-5 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4 opacity-5">
+<span class="material-symbols-outlined text-9xl">warning</span>
+</div>
+<div class="w-12 h-12 rounded-2xl bg-error flex items-center justify-center text-white shrink-0 shadow-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+<div class="space-y-2">
+<h3 class="font-headline font-extrabold text-error text-xl tracking-tight">Dangerous Interaction Detected</h3>
+<p class="text-on-error-container text-sm font-medium leading-snug">The combination of <span class="font-bold underline">Amoxicillin</span> and <span class="font-bold underline">Methotrexate</span> (from your history) may lead to increased toxicity levels. Consult your physician immediately.</p>
+<div class="pt-2 flex gap-4">
+<button class="text-error font-bold text-xs uppercase tracking-widest flex items-center gap-1 hover:underline">
+                                View Research
+                                <span class="material-symbols-outlined text-xs">open_in_new</span>
+</button>
+<button class="text-on-error-container font-bold text-xs uppercase tracking-widest flex items-center gap-1 hover:underline">
+                                Dismiss Warning
+                            </button>
+</div>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between px-2">
+<h3 class="font-headline font-bold text-lg tracking-tight">Identified Medication</h3>
+<span class="text-xs font-bold text-outline uppercase tracking-widest">2 Items Found</span>
+</div>
+<div class="space-y-3">
+<div class="group bg-surface-container-lowest p-6 rounded-[28px] border border-outline-variant/10 hover:border-primary/20 transition-all flex items-center gap-6">
+<div class="w-16 h-16 rounded-2xl bg-primary-fixed flex items-center justify-center text-primary shrink-0 transition-transform group-hover:scale-110">
+<span class="material-symbols-outlined text-3xl">medication</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-1">
+<h4 class="font-headline font-bold text-xl text-on-surface">Amoxicillin</h4>
+<span class="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Antibiotic</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-primary font-black text-sm uppercase tracking-tighter bg-primary-container/20 px-2 py-0.5 rounded">500mg Capsule</span>
+<span class="text-on-surface-variant text-sm font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-base">schedule</span>
+                                        3x Daily (8 Hours)
+                                    </span>
+</div>
+</div>
+</div>
+<div class="group bg-surface-container-lowest p-6 rounded-[28px] border border-outline-variant/10 hover:border-primary/20 transition-all flex items-center gap-6">
+<div class="w-16 h-16 rounded-2xl bg-secondary-fixed flex items-center justify-center text-secondary shrink-0 transition-transform group-hover:scale-110">
+<span class="material-symbols-outlined text-3xl">pill</span>
+</div>
+<div class="flex-1">
+<div class="flex items-center justify-between mb-1">
+<h4 class="font-headline font-bold text-xl text-on-surface">Ibuprofen</h4>
+<span class="px-3 py-1 bg-surface-container-high rounded-full text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Pain Relief</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-primary font-black text-sm uppercase tracking-tighter bg-primary-container/20 px-2 py-0.5 rounded">400mg Tablet</span>
+<span class="text-on-surface-variant text-sm font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-base">info</span>
+                                        Every 6h (as needed)
+                                    </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<button class="col-span-2 md:col-span-1 flex flex-col items-center justify-center gap-3 p-8 bg-surface-container-low rounded-[32px] border border-outline-variant/10 hover:bg-surface-container-high transition-all active:scale-95 group">
+<div class="w-12 h-12 rounded-full bg-white flex items-center justify-center text-primary shadow-sm group-hover:rotate-12 transition-transform">
+<span class="material-symbols-outlined">refresh</span>
+</div>
+<span class="font-headline font-bold tracking-tight">Reprocess Scan</span>
+<span class="text-[10px] text-outline font-bold uppercase tracking-widest">Fix extraction errors</span>
+</button>
+<button class="col-span-2 md:col-span-1 flex flex-col items-center justify-center gap-3 p-8 bg-surface-container-low rounded-[32px] border border-outline-variant/10 hover:bg-surface-container-high transition-all active:scale-95 group">
+<div class="w-12 h-12 rounded-full bg-white flex items-center justify-center text-primary shadow-sm group-hover:translate-y-[-4px] transition-transform">
+<span class="material-symbols-outlined">add_task</span>
+</div>
+<span class="font-headline font-bold tracking-tight">Add to Records</span>
+<span class="text-[10px] text-outline font-bold uppercase tracking-widest">Save to health vault</span>
+</button>
+</div>
+</div>
+</section>
+</main>
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-[#ffffff]/80 backdrop-blur-[25px] dark:bg-slate-950/80 rounded-t-[32px] shadow-[0_-8px_40px_rgba(0,0,0,0.04)]">
+<div class="flex flex-col items-center justify-center text-[#bbc9cf] dark:text-slate-500 px-5 py-2 hover:text-[#00677e] transition-colors cursor-pointer active:scale-92">
+<span class="material-symbols-outlined">grid_view</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#bbc9cf] dark:text-slate-500 px-5 py-2 hover:text-[#00677e] transition-colors cursor-pointer active:scale-92">
+<span class="material-symbols-outlined">add_a_photo</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Scan</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-gradient-to-br from-[#00677e] to-[#00d4ff] text-white rounded-2xl px-5 py-2 shadow-[0_0_15px_rgba(0,212,255,0.4)] cursor-pointer active:scale-92">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">history_edu</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Records</span>
+</div>
+<div class="flex flex-col items-center justify-center text-[#bbc9cf] dark:text-slate-500 px-5 py-2 hover:text-[#00677e] transition-colors cursor-pointer active:scale-92">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="font-['Manrope'] text-[11px] font-semibold uppercase tracking-widest mt-1">Profile</span>
+</div>
+</nav>
+<div class="fixed top-1/2 -right-12 w-64 h-64 bg-secondary-container opacity-5 blur-[120px] pointer-events-none rounded-full"></div>
+<div class="fixed bottom-1/4 -left-12 w-48 h-48 bg-primary-container opacity-5 blur-[100px] pointer-events-none rounded-full"></div>
+</body></html>
