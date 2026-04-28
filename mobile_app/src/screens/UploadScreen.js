@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 
+// ─── CHANGE THIS to your PC's Wi-Fi IP address ─────────────────────
+// Run 'ipconfig' in PowerShell and use your Wi-Fi adapter's IPv4 address.
+// On Android emulator use: '10.0.2.2'
+// On physical device use your PC's LAN IP like: '192.168.1.X'
+const API_BASE_URL = 'http://10.119.80.67:8000';
+
 export default function UploadScreen({ navigation }) {
   const [image, setImage] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusText, setStatusText] = useState('');
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -37,13 +45,64 @@ export default function UploadScreen({ navigation }) {
     }
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
     if (!image) return;
-    // Simulate sending to backend and navigating to details
-    setTimeout(() => {
-      navigation.navigate('PrescriptionDetails', { imageUri: image });
-      setImage(null);
-    }, 1500);
+
+    setIsProcessing(true);
+    setStatusText('Uploading image...');
+
+    try {
+      // Build FormData with the image
+      const formData = new FormData();
+
+      // Extract filename and determine MIME type
+      const filename = image.split('/').pop() || 'prescription.jpg';
+      const ext = filename.split('.').pop().toLowerCase();
+      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+
+      formData.append('file', {
+        uri: image,
+        name: filename,
+        type: mimeType,
+      });
+
+      setStatusText('Running AI analysis... (this may take 1-2 minutes on first run)');
+
+      // Send to backend — DO NOT set Content-Type header manually with FormData
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: 'POST',
+        body: formData,
+        // Let fetch auto-set Content-Type with correct multipart boundary
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setStatusText('Analysis complete!');
+        // Navigate to details with the real API response
+        navigation.navigate('PrescriptionDetails', {
+          data: data,
+          imageUri: image,
+        });
+        setImage(null);
+      } else {
+        Alert.alert(
+          'Analysis Failed',
+          data.error || 'Could not process the prescription. Please try a clearer image.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      Alert.alert(
+        'Connection Error',
+        `Could not connect to the server at ${API_BASE_URL}.\n\nMake sure:\n1. Backend is running (uvicorn main:app)\n2. Phone and PC are on the same Wi-Fi\n3. IP address is correct in UploadScreen.js`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsProcessing(false);
+      setStatusText('');
+    }
   };
 
   return (
@@ -62,6 +121,14 @@ export default function UploadScreen({ navigation }) {
              <Text style={styles.placeholderText}>No prescription selected</Text>
           </View>
         )}
+
+        {/* Processing overlay */}
+        {isProcessing && (
+          <View style={styles.processingOverlay}>
+            <ActivityIndicator size="large" color={COLORS.primaryContainer} />
+            <Text style={styles.processingText}>{statusText}</Text>
+          </View>
+        )}
       </View>
 
       {!image ? (
@@ -78,14 +145,28 @@ export default function UploadScreen({ navigation }) {
          </View>
       ) : (
          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.buttonOutline} onPress={() => setImage(null)}>
-              <MaterialIcons name="close" size={24} color={COLORS.primary} />
-              <Text style={styles.buttonOutlineText}>Retake</Text>
+            <TouchableOpacity
+              style={[styles.buttonOutline, isProcessing && styles.buttonDisabled]}
+              onPress={() => setImage(null)}
+              disabled={isProcessing}
+            >
+              <MaterialIcons name="close" size={24} color={isProcessing ? COLORS.outlineVariant : COLORS.primary} />
+              <Text style={[styles.buttonOutlineText, isProcessing && styles.textDisabled]}>Retake</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.buttonPrimary} onPress={handleProcess}>
-              <MaterialIcons name="analytics" size={24} color={COLORS.onPrimary} />
-              <Text style={styles.buttonPrimaryText}>Analyze AI</Text>
+            <TouchableOpacity
+              style={[styles.buttonPrimary, isProcessing && styles.buttonPrimaryDisabled]}
+              onPress={handleProcess}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator size="small" color={COLORS.onPrimary} />
+              ) : (
+                <MaterialIcons name="analytics" size={24} color={COLORS.onPrimary} />
+              )}
+              <Text style={styles.buttonPrimaryText}>
+                {isProcessing ? 'Analyzing...' : 'Analyze AI'}
+              </Text>
             </TouchableOpacity>
          </View>
       )}
@@ -140,6 +221,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 24,
+    padding: 24,
+  },
+  processingText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -175,5 +272,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 8,
-  }
+  },
+  buttonDisabled: {
+    borderColor: COLORS.outlineVariant,
+  },
+  textDisabled: {
+    color: COLORS.outlineVariant,
+  },
+  buttonPrimaryDisabled: {
+    backgroundColor: COLORS.outline,
+  },
 });
