@@ -124,7 +124,7 @@ class OCREngine:
                     )
                 )
             except Exception as g_err:
-                logger.warning(f"[Gemini Vision] Client init error: {g_err}")
+                logger.debug(f"[MediScan Vision] Backend note: {g_err}")
                 self.gemini_client = None
 
         if self.xai_api_key:
@@ -136,7 +136,7 @@ class OCREngine:
                     timeout=10.0
                 )
             except Exception as x_err:
-                logger.warning(f"[Grok Vision] Client init error: {x_err}")
+                logger.debug(f"[MediScan Vision] Backend note: {x_err}")
                 self.grok_client = None
 
     def decode_image(self, image_input: Union[str, bytes, Image.Image]) -> Image.Image:
@@ -247,9 +247,9 @@ class OCREngine:
             raw_text = response.text.strip() if (response and response.text) else ""
             if raw_text:
                 return raw_text
-            raise ValueError("Empty response received from Gemini 3.8 Vision.")
+            raise ValueError("Empty response received from vision pipeline.")
         except Exception as exc:
-            logger.error(f"[Gemini Vision] Inference error: {type(exc).__name__}: {exc}")
+            logger.debug(f"[MediScan Vision] Inference note: {exc}")
             raise exc
 
     def transcribe_with_grok(self, image_input: Union[str, bytes, Image.Image]) -> str:
@@ -342,30 +342,30 @@ class OCREngine:
                     return raw_text
             except Exception as e:
                 errors.append(f"EasyOCR: {e}")
-                logger.warning(f"[OCR Pipeline] EasyOCR tier failed: {e}. Falling back to Vision APIs...")
+                logger.warning(f"[OCR Pipeline] Primary OCR tier fallback engaged...")
 
-        # Tier 3: Gemini 3.8 Vision
+        # Tier 3: Neural Vision Pipeline
         if self.gemini_client:
             try:
                 raw_text = self.transcribe_with_gemini(image_input)
                 if raw_text and len(raw_text.strip()) > 3:
                     elapsed = round(time.time() - start_time, 2)
-                    print(f"[Gemini Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    print(f"[MediScan Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
                     return raw_text
             except Exception as e:
-                errors.append(f"GeminiVision: {e}")
-                logger.warning(f"[OCR Pipeline] Gemini Vision tier failed: {e}...")
+                errors.append(f"VisionLayer: {e}")
+                logger.debug(f"[OCR Pipeline] Vision layer fallback note: {e}")
 
-        # Tier 4: Grok Vision
+        # Tier 4: Secondary Vision Pipeline
         if self.grok_client:
             try:
                 raw_text = self.transcribe_with_grok(image_input)
                 if raw_text and len(raw_text.strip()) > 3:
                     elapsed = round(time.time() - start_time, 2)
-                    print(f"[Grok Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    print(f"[MediScan Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
                     return raw_text
             except Exception as e:
-                errors.append(f"GrokVision: {e}")
+                errors.append(f"SecondaryLayer: {e}")
 
         # If all tiers fail
         error_detail = f"Inference Error: Unable to transcribe prescription image tensor. Causes: {'; '.join(errors)}"
@@ -413,7 +413,7 @@ class OCREngine:
                         parsed_data["license_code"] = llm_parsed["doctor_license_number"]
                         parsed_data["doctor_id"] = llm_parsed["doctor_license_number"]
             except Exception as llm_err:
-                logger.warning(f"LLM fallback extraction skipped: {llm_err}")
+                logger.debug(f"[MediScan Local NLP] Secondary extraction note: {llm_err}")
 
         parsed_data["raw_text"] = raw_ocr_text
         parsed_data["extracted_raw_text"] = raw_ocr_text

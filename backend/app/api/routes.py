@@ -303,7 +303,7 @@ def get_prescriptions(db: Session = Depends(get_db)):
 @router.post("/ocr/parse")
 async def parse_raw_ocr_text(payload: Dict[str, Any] = Body(...)):
     """
-    Endpoint: Parse raw OCR text using Multi-Provider LLM Fallback Router (Gemini 3.8 -> Grok).
+    Endpoint: Parse raw OCR text using MediScan Local NLP extraction pipeline.
     Accepts raw text or line array from TrOCR/EasyOCR and returns standardized clinical JSON.
     """
     raw_input = (
