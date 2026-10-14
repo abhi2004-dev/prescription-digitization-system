@@ -3,21 +3,20 @@ import re
 import json
 import logging
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+import io
 from typing import Union, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-from openai import OpenAI
+from PIL import Image
 
 # Modern official Google GenAI SDK
 try:
     from google import genai
     from google.genai import types
     from google.genai.errors import ServerError, APIError, ClientError
-    GENAI_NEW_SDK = True
+    GENAI_AVAILABLE = True
 except ImportError:
-    GENAI_NEW_SDK = False
+    GENAI_AVAILABLE = False
 
 # Import local dosage schedule parser for unified field formatting
 try:
@@ -28,17 +27,17 @@ except ImportError:
 load_dotenv()
 
 # Configure console logger
-logger = logging.getLogger("LLMFallbackRouter")
+logger = logging.getLogger("GeminiParser")
 if not logger.handlers:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-# Primary model: Gemini 3.8 (strictly no Gemini 3.7)
-PRIMARY_GEMINI_MODEL = "gemini-3.8-flash"
-GEMINI_STRICT_TIMEOUT_SEC = 8.0  # Strict 8-second HTTP timeout
-GEMINI_HTTP_DEADLINE_MS = 10000  # API allowed deadline minimum (10s)
+# Gemini 3.8 Flash configuration
+MODEL_NAME = "gemini-3.8-flash"
+GEMINI_TIMEOUT_SECONDS = 60
+GEMINI_TIMEOUT_MS = 60000  # 60-second HTTP timeout in milliseconds
 
 class Medicine(BaseModel):
     name: str = Field(description="The actual pharmaceutical name, correcting minor typos.")
@@ -52,8 +51,7 @@ class PrescriptionData(BaseModel):
     doctor_license_number: str = Field(default="", description="Return empty string if not found.")
     medicines: List[Medicine] = Field(default_factory=list, description="List of verified medicines.")
 
-# Standardized system prompt identical for both Gemini 3.8 and Grok
-SYSTEM_PROMPT = """You are a strict clinical data extraction engine parsing noisy OCR text from a handwritten prescription.
+SYSTEM_PROMPT = """You are a strict clinical data extraction engine parsing noisy OCR text or prescription images.
 
 CRITICAL RULES:
 * ZERO HALLUCINATIONS: Do not guess or invent medications. If a word or phrase is not a recognized pharmaceutical, discard it completely.
@@ -82,13 +80,11 @@ def _clean_json_text(text: str) -> str:
         return "{}"
     cleaned = text.strip()
     if cleaned.startswith("```"):
-        # Remove opening ```json or ```
         cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
-        # Remove trailing ```
         cleaned = re.sub(r"\s*```$", "", cleaned)
     return cleaned.strip()
 
-def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provider: str) -> Dict[str, Any]:
+def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provider: str = MODEL_NAME) -> Dict[str, Any]:
     """
     Standardizes the parsed output dictionary so it perfectly aligns with
     what the frontend and safety endpoints expect.
@@ -182,172 +178,106 @@ def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provid
         "llm_provider": provider
     }
 
-def _parse_with_gemini_38(text_payload: str) -> Dict[str, Any]:
+def get_gemini_client() -> genai.Client:
     """
-    Primary Provider: Gemini 3.8 with strict 8-second HTTP timeout.
-    Returns parsed JSON dictionary if successful.
+    Initializes and returns the Google GenAI Client with a 60-second standard timeout.
     """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable is not configured.")
 
-    if not GENAI_NEW_SDK:
-        raise ImportError("google-genai client library is not available.")
+    if not GENAI_AVAILABLE:
+        raise ImportError("google-genai client library is not available. Install with `pip install google-genai`.")
 
-    logger.info(f"[LLM Router] Dispatching request to Primary Provider: Gemini 3.8 ({PRIMARY_GEMINI_MODEL}, timeout={GEMINI_STRICT_TIMEOUT_SEC}s)...")
-
-    # Configure client with 1 attempt (prevent slow retry loops on 503) and 10s API deadline
     http_options = types.HttpOptions(
-        timeout=GEMINI_HTTP_DEADLINE_MS,
-        retry_options=types.HttpRetryOptions(attempts=1)
+        timeout=GEMINI_TIMEOUT_MS,
+        retry_options=types.HttpRetryOptions(attempts=3)
     )
-    client = genai.Client(api_key=api_key, http_options=http_options)
+    return genai.Client(api_key=api_key, http_options=http_options)
 
-    config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_PROMPT,
-        response_mime_type="application/json",
-        response_schema=PrescriptionData,
-        temperature=0.0,
-        http_options=http_options
-    )
+def parse_ocr_text(raw_input: Union[List[str], str, Image.Image, bytes]) -> Dict[str, Any]:
+    """
+    Parses noisy OCR text or prescription image inputs strictly using Gemini 3.8 Flash (google-genai).
+    Extracts doctor, patient, and verified medication details into a clean, standardized JSON format.
+    Configured with a 60-second timeout to handle complex requests gracefully.
+    """
+    text_payload = ""
+    contents: List[Any] = []
 
-    # Strictly enforce 8.0-second HTTP execution timeout via ThreadPoolExecutor
-    executor = ThreadPoolExecutor(max_workers=1)
+    # Handle multimodal image inputs or text inputs
+    if isinstance(raw_input, Image.Image):
+        contents = [raw_input, "Extract the clinical prescription details from this image."]
+        text_payload = "[Image Input]"
+    elif isinstance(raw_input, bytes):
+        try:
+            img = Image.open(io.BytesIO(raw_input))
+            contents = [img, "Extract the clinical prescription details from this image."]
+            text_payload = "[Image Bytes Input]"
+        except Exception:
+            text_payload = raw_input.decode("utf-8", errors="ignore")
+            contents = [f"Raw OCR Text:\n{text_payload}"]
+    elif isinstance(raw_input, str) and os.path.isfile(raw_input) and raw_input.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
+        try:
+            img = Image.open(raw_input)
+            contents = [img, "Extract the clinical prescription details from this image."]
+            text_payload = f"[Image File: {os.path.basename(raw_input)}]"
+        except Exception:
+            text_payload = raw_input
+            contents = [f"Raw OCR Text:\n{text_payload}"]
+    elif isinstance(raw_input, list):
+        text_payload = "\n".join(s.strip() for s in raw_input if isinstance(s, str) and s.strip())
+        contents = [f"Raw OCR Text:\n{text_payload}"] if text_payload else []
+    else:
+        text_payload = str(raw_input or "").strip()
+        contents = [f"Raw OCR Text:\n{text_payload}"] if text_payload else []
+
+    print("\n--- CLINICAL INPUT RECEIVED BY GEMINI 3.8 PARSER ---")
+    print(text_payload)
+    print("----------------------------------------------------\n")
+
+    if not text_payload and not contents:
+        return _standardize_prescription_output({}, "", provider=MODEL_NAME)
+
     try:
-        future = executor.submit(
-            client.models.generate_content,
-            model=PRIMARY_GEMINI_MODEL,
-            contents=[f"Raw OCR Text:\n{text_payload}"],
+        client = get_gemini_client()
+        logger.info(f"Dispatching extraction request to Gemini 3.8 ({MODEL_NAME}, timeout={GEMINI_TIMEOUT_SECONDS}s)...")
+
+        http_options = types.HttpOptions(
+            timeout=GEMINI_TIMEOUT_MS,
+            retry_options=types.HttpRetryOptions(attempts=3)
+        )
+
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            response_schema=PrescriptionData,
+            temperature=0.0,
+            http_options=http_options
+        )
+
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=contents,
             config=config
         )
-        response = future.result(timeout=GEMINI_STRICT_TIMEOUT_SEC)
-    except FuturesTimeoutError:
-        raise TimeoutError(f"Gemini 3.8 exceeded strict HTTP timeout of {GEMINI_STRICT_TIMEOUT_SEC}s.")
-    finally:
-        executor.shutdown(wait=False)
 
-    raw_response_text = response.text.strip() if (response and response.text) else ""
-    if not raw_response_text:
-        raise ValueError("Empty response received from Gemini 3.8.")
+        raw_response_text = response.text.strip() if (response and response.text) else ""
+        if not raw_response_text:
+            raise ValueError("Empty response received from Gemini 3.8 Flash.")
 
-    parsed_json = json.loads(raw_response_text)
-    logger.info("[LLM Router] Successfully parsed prescription using Primary Provider (Gemini 3.8).")
-    return _standardize_prescription_output(parsed_json, text_payload, provider="gemini-3.8")
+        cleaned_json = _clean_json_text(raw_response_text)
+        parsed_json = json.loads(cleaned_json)
+        logger.info("Successfully parsed prescription with Gemini 3.8 Flash.")
+        return _standardize_prescription_output(parsed_json, text_payload, provider=MODEL_NAME)
 
-def _parse_with_grok(text_payload: str) -> Dict[str, Any]:
-    """
-    Secondary Provider: Grok API fallback using key loaded from .env.
-    Uses identical system prompt and schema for standardized output.
-    """
-    xai_api_key = os.getenv("XAI_API_KEY") or os.getenv("GROK_API_KEY")
-    if not xai_api_key:
-        raise ValueError("XAI_API_KEY / GROK_API_KEY environment variable is not configured for Grok fallback.")
+    except (ServerError, APIError, ClientError) as api_err:
+        logger.error(f"Gemini 3.8 Flash API error: {api_err}")
+        fallback = _standardize_prescription_output({}, text_payload, provider=f"{MODEL_NAME} (api_error)")
+        fallback["error"] = str(api_err)
+        return fallback
 
-    logger.info("[LLM Router] Executing Secondary Fallback: Grok API...")
-
-    # Determine endpoint & models based on API key type:
-    # Groq API keys start with 'gsk_', while xAI native keys start with 'xai-'
-    is_groq_key = xai_api_key.startswith("gsk_")
-
-    endpoints_to_try = []
-    if is_groq_key:
-        endpoints_to_try.append({
-            "base_url": "https://api.groq.com/openai/v1",
-            "models": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
-        })
-    else:
-        endpoints_to_try.append({
-            "base_url": "https://api.x.ai/v1",
-            "models": ["grok-2-latest", "grok-beta", "grok-2"]
-        })
-        endpoints_to_try.append({
-            "base_url": "https://api.groq.com/openai/v1",
-            "models": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
-        })
-
-    last_error = None
-    for ep in endpoints_to_try:
-        base_url = ep["base_url"]
-        models = ep["models"]
-        try:
-            client = OpenAI(
-                api_key=xai_api_key,
-                base_url=base_url,
-                timeout=10.0
-            )
-            for model_name in models:
-                try:
-                    logger.info(f"[LLM Router] Calling Grok client at {base_url} with model {model_name}...")
-                    response = client.chat.completions.create(
-                        model=model_name,
-                        messages=[
-                            {"role": "system", "content": SYSTEM_PROMPT},
-                            {"role": "user", "content": f"Raw OCR Text:\n{text_payload}"}
-                        ],
-                        temperature=0.0,
-                        response_format={"type": "json_object"}
-                    )
-                    raw_content = response.choices[0].message.content if response.choices else ""
-                    cleaned_content = _clean_json_text(raw_content)
-                    if cleaned_content:
-                        parsed_json = json.loads(cleaned_content)
-                        logger.info(f"[LLM Router] Successfully parsed prescription using Grok ({model_name}).")
-                        return _standardize_prescription_output(parsed_json, text_payload, provider=f"grok ({model_name})")
-                except Exception as m_err:
-                    last_error = m_err
-                    logger.warning(f"[LLM Router] Model {model_name} at {base_url} failed: {m_err}")
-                    continue
-        except Exception as ep_err:
-            last_error = ep_err
-            continue
-
-    raise RuntimeError(f"Secondary Grok fallback failed across all models: {last_error}")
-
-def parse_ocr_text(raw_text_input: Union[List[str], str]) -> Dict[str, Any]:
-    """
-    Multi-Provider LLM Fallback Router:
-    1. Primary: Gemini 3.8 with strict 8-second HTTP timeout.
-    2. Secondary Fallback: Grok API triggered instantly on timeout, 503, or connection error.
-    3. Output Standardization: Identical prompt and output schema for seamless frontend & safety engine integration.
-    """
-    if isinstance(raw_text_input, list):
-        text_payload = "\n".join(s.strip() for s in raw_text_input if s.strip())
-    else:
-        text_payload = str(raw_text_input).strip()
-
-    print("\n--- RAW OCR TEXT RECEIVED BY LLM ROUTER ---")
-    print(text_payload)
-    print("-------------------------------------------\n")
-
-    if not text_payload:
-        return _standardize_prescription_output({}, "", provider="none")
-
-    # 1. Primary Attempt: Gemini 3.8 with strict 8s timeout
-    try:
-        return _parse_with_gemini_38(text_payload)
-    except (FuturesTimeoutError, TimeoutError, ServerError, APIError, ClientError, Exception) as exc:
-        # Catch 503 Service Unavailable, HTTP timeouts, connection errors, or other failures
-        logger.warning(
-            f"[LLM Router] Gemini 3.8 Primary failed with error ({type(exc).__name__}: {exc}). "
-            f"Instantly failing over to Secondary Provider (Grok)..."
-        )
-        print(f"\n[ALERT] Gemini 3.8 Primary Encountered: {exc}")
-        print(">>> Instantly triggering Secondary Fallback: Grok API <<<\n")
-
-    # 2. Secondary Attempt: Grok API fallback
-    try:
-        return _parse_with_grok(text_payload)
-    except Exception as grok_exc:
-        logger.error(f"[LLM Router] Both Gemini 3.8 and Grok failed. Error: {grok_exc}")
-        print(f"CRITICAL: Multi-provider LLM Parsing Error: {grok_exc}")
-        return {
-            "error": str(grok_exc),
-            "doctor_name": None,
-            "hospital_name": None,
-            "patient_name": None,
-            "patient_age": None,
-            "doctor_license_number": None,
-            "medicines": [],
-            "raw_text": text_payload,
-            "llm_provider": "failed"
-        }
+    except Exception as exc:
+        logger.error(f"Gemini 3.8 Flash extraction failed: {exc}", exc_info=True)
+        fallback = _standardize_prescription_output({}, text_payload, provider=f"{MODEL_NAME} (failed)")
+        fallback["error"] = str(exc)
+        return fallback
