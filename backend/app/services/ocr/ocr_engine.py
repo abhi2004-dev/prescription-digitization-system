@@ -1,155 +1,420 @@
-import cv2
-import numpy as np
-from PIL import Image
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
-import sys
-import logging
 import os
+import io
+import sys
+import base64
+import time
+import logging
+from typing import Union
+import numpy as np
+import torch
+from PIL import Image
+from dotenv import load_dotenv
+from fastapi import HTTPException
+from transformers import TrOCRProcessor, ViTImageProcessor, AutoTokenizer
+from google import genai
+from google.genai.errors import ServerError, APIError, ClientError
+from openai import OpenAI
 
-logger = logging.getLogger(__name__)
+from app.services.medicine.extractor import NLPExtractor
 
-# --- Lazy Model Loading ---
-# Model path is configurable via environment variable.
-# Default: pre-built model. Swap to custom model by changing this value.
-MODEL_NAME = os.environ.get("TROCR_MODEL_PATH", "microsoft/trocr-base-handwritten")
+load_dotenv()
 
-_processor = None
-_model = None
+# Configure console logging
+logger = logging.getLogger("TrOCRClinicalPipeline")
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s'))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
+OCR_SYSTEM_PROMPT = (
+    "Transcribe all handwritten and printed text from this medical prescription image verbatim line by line. "
+    "Return ONLY the exact raw transcribed text. "
+    "Do NOT format as JSON, Markdown code blocks, bullet points, or summaries."
+)
 
-def get_model():
-    """Lazy-load the TrOCR model on first use. Subsequent calls return cached instances."""
-    global _processor, _model
-    if _processor is None or _model is None:
-        logger.info(f"Loading TrOCR model: {MODEL_NAME} (this takes 30-60 seconds on first run)...")
-        _processor = TrOCRProcessor.from_pretrained(MODEL_NAME)
-        _model = VisionEncoderDecoderModel.from_pretrained(MODEL_NAME)
-        logger.info("Model loaded successfully.")
-    return _processor, _model
+class OCREngine:
+    """
+    Production Vision Transformer OCR Engine:
+    - Microsoft TrOCR Vision Transformer Pipeline (VisionEncoderDecoderModel + TrOCRProcessor)
+    - Fallback local EasyOCR pipeline
+    - Clinical spaCy NLP pipeline (clinical_nlp_model_v4)
+    """
+    def __init__(self, gemini_api_key: str = None, xai_api_key: str = None):
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        logger.info(f"[OCREngine] Initializing OCR Engine on device: {self.device}")
 
+        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
+        self.xai_api_key = xai_api_key or os.getenv("XAI_API_KEY")
 
+        # 1. Initialize TrOCR Processor and Model
+        self.processor = None
+        self.model = None
+        self._init_trocr_model()
 
-def crop_paper(gray):
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, 180, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return gray
-    largest = max(contours, key=cv2.contourArea)
-    x, y, w, h = cv2.boundingRect(largest)
-    pad = 10
-    x, y = max(0, x - pad), max(0, y - pad)
-    w = min(gray.shape[1] - x, w + 2 * pad)
-    h = min(gray.shape[0] - y, h + 2 * pad)
-    return gray[y:y+h, x:x+w]
+        # 2. Initialize EasyOCR Reader for local CPU fallback
+        self.easyocr_reader = None
+        self._init_easyocr()
 
+        # 3. Initialize Vision API Clients
+        self.gemini_client = None
+        self.grok_client = None
+        self._init_api_clients()
 
-def get_spans(projection, threshold, min_gap):
-    """Generic: find contiguous spans where projection > threshold."""
-    in_span = False
-    spans = []
-    start = 0
-    for i, val in enumerate(projection):
-        if val > threshold and not in_span:
-            in_span = True
-            start = i
-        elif val <= threshold and in_span:
-            in_span = False
-            if i - start > min_gap:
-                spans.append((start, i))
-    if in_span:
-        spans.append((start, len(projection)))
-    return spans
+        # 4. Initialize Local Custom spaCy NLP Extractor
+        self.nlp_extractor = NLPExtractor()
+        logger.info("[ClinicalNLP] Initialized clinical entity extraction pipeline: en_core_med_ner_trf")
 
+    def _init_trocr_model(self):
+        """Initializes TrOCR processor and VisionEncoderDecoderModel if available."""
+        model_path = os.getenv("MODEL_PATH") or os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../../../ml_development/data/trocr_prescription_final")
+        )
 
-def get_word_crops(line_img, binary_line):
-    """Split a line image into word crops using vertical projection."""
-    v_proj = np.sum(binary_line, axis=0) // 255
-    threshold = line_img.shape[0] * 0.02  # 2% of line height
-    word_spans = get_spans(v_proj, threshold, min_gap=3)
+        # Initialize processor
+        try:
+            if os.path.exists(model_path):
+                try:
+                    ip = ViTImageProcessor.from_pretrained(model_path)
+                    tok = AutoTokenizer.from_pretrained(model_path)
+                    self.processor = TrOCRProcessor(image_processor=ip, tokenizer=tok)
+                except Exception:
+                    self.processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+            else:
+                self.processor = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
+            logger.info(f"[TrOCR] Processor loaded successfully.")
+        except Exception as proc_err:
+            logger.warning(f"[TrOCR] TrOCRProcessor loading error: {proc_err}")
+            self.processor = None
 
-    # Merge spans that are close together (same word)
-    merged = []
-    for span in word_spans:
-        if merged and span[0] - merged[-1][1] < 20:
-            merged[-1] = (merged[-1][0], span[1])
+        # Initialize model
+        try:
+            from transformers import VisionEncoderDecoderModel
+            if os.path.exists(model_path):
+                self.model = VisionEncoderDecoderModel.from_pretrained(model_path, low_cpu_mem_usage=True)
+            else:
+                self.model = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten", low_cpu_mem_usage=True)
+            self.model.to(self.device)
+            self.model.eval()
+            logger.info(f"[TrOCR] Model loaded from checkpoint: {model_path} (device: {self.device})")
+        except Exception as model_err:
+            logger.warning(f"[TrOCR] VisionEncoderDecoderModel could not be loaded into memory ({model_err}). Fallback OCR enabled.")
+            self.model = None
+
+    def _init_easyocr(self):
+        """Initializes EasyOCR reader for fast local inference."""
+        try:
+            import easyocr
+            self.easyocr_reader = easyocr.Reader(['en'], gpu=torch.cuda.is_available())
+            logger.info("[EasyOCR] Reader initialized successfully.")
+        except Exception as easy_err:
+            logger.warning(f"[EasyOCR] Failed to initialize EasyOCR: {easy_err}")
+            self.easyocr_reader = None
+
+    def _init_api_clients(self):
+        """Initializes cloud vision clients (Gemini 3.8 and Grok)."""
+        if self.gemini_api_key:
+            try:
+                from google.genai import types
+                self.gemini_client = genai.Client(
+                    api_key=self.gemini_api_key,
+                    http_options=types.HttpOptions(
+                        timeout=10000,
+                        retry_options=types.HttpRetryOptions(attempts=1)
+                    )
+                )
+            except Exception as g_err:
+                logger.warning(f"[Gemini Vision] Client init error: {g_err}")
+                self.gemini_client = None
+
+        if self.xai_api_key:
+            try:
+                base_url = "https://api.groq.com/openai/v1" if self.xai_api_key.startswith("gsk_") else "https://api.x.ai/v1"
+                self.grok_client = OpenAI(
+                    api_key=self.xai_api_key,
+                    base_url=base_url,
+                    timeout=10.0
+                )
+            except Exception as x_err:
+                logger.warning(f"[Grok Vision] Client init error: {x_err}")
+                self.grok_client = None
+
+    def decode_image(self, image_input: Union[str, bytes, Image.Image]) -> Image.Image:
+        """
+        Verify Image Decoding:
+        Converts incoming UploadFile byte stream, file path, or PIL object
+        into a standard RGB PIL.Image ready for tensor processing.
+        """
+        try:
+            if isinstance(image_input, Image.Image):
+                image = image_input.convert("RGB")
+            elif isinstance(image_input, bytes):
+                image = Image.open(io.BytesIO(image_input)).convert("RGB")
+            elif isinstance(image_input, (str, os.PathLike)):
+                if not os.path.exists(image_input):
+                    raise FileNotFoundError(f"Prescription image not found at: {image_input}")
+                image = Image.open(image_input).convert("RGB")
+            else:
+                raise ValueError(f"Unsupported image input type: {type(image_input)}")
+
+            # Ensure valid dimensions
+            if image.width == 0 or image.height == 0:
+                raise ValueError(f"Invalid image dimensions: {image.size}")
+
+            return image
+        except Exception as exc:
+            logger.error(f"[ImageDecoding] Failed to decode image to standard RGB PIL.Image: {exc}", exc_info=True)
+            raise exc
+
+    def transcribe_with_trocr(self, image_input: Union[str, bytes, Image.Image]) -> str:
+        """
+        PyTorch TrOCR Vision Transformer Pipeline:
+        1. Ensures standard RGB PIL.Image decoding.
+        2. Generates pixel_values tensor via TrOCRProcessor: processor(images=image, return_tensors="pt").pixel_values.
+        3. Moves tensor to the matching device (.to(self.device)).
+        4. Executes beam search generation with PyTorch.
+        5. Decodes generated tokens into clean text string.
+        """
+        if self.model is None or self.processor is None:
+            raise RuntimeError("TrOCR model or processor is not available.")
+
+        start_time = time.time()
+        try:
+            # Step 1: Verify Image Decoding
+            image = self.decode_image(image_input)
+            logger.info(f"[TrOCR] Image successfully decoded: size={image.size}, mode={image.mode}")
+
+            # Step 2: Fix Tensor Generation
+            inputs = self.processor(images=image, return_tensors="pt")
+            pixel_values = inputs.pixel_values
+
+            # Move tensor to model device
+            pixel_values = pixel_values.to(self.device)
+            logger.info(f"[TrOCR] Generated pixel values tensor: shape={pixel_values.shape}, device={pixel_values.device}")
+
+            # Step 3: Run Model Inference with detailed PyTorch logging
+            with torch.no_grad():
+                generated_ids = self.model.generate(
+                    pixel_values,
+                    max_new_tokens=128,
+                    num_beams=4,
+                    length_penalty=1.0,
+                    early_stopping=True
+                )
+
+            transcribed = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+            elapsed_time = round(time.time() - start_time, 2)
+            logger.info(f"[TrOCR] Sequence generated in {elapsed_time}s: '{transcribed[:80]}...'")
+            return transcribed
+
+        except Exception as exc:
+            logger.error(f"[TrOCR] PyTorch tensor inference failed: {type(exc).__name__}: {exc}", exc_info=True)
+            raise exc
+
+    def transcribe_with_easyocr(self, image_input: Union[str, bytes, Image.Image]) -> str:
+        """
+        Local CPU Fallback OCR using EasyOCR.
+        """
+        if not self.easyocr_reader:
+            raise RuntimeError("EasyOCR reader is not available.")
+
+        start_time = time.time()
+        try:
+            image = self.decode_image(image_input)
+            img_np = np.array(image)
+            lines = self.easyocr_reader.readtext(img_np, detail=0)
+            transcribed = "\n".join(line.strip() for line in lines if line.strip())
+            elapsed = round(time.time() - start_time, 2)
+            logger.info(f"[EasyOCR] Sequence generated in {elapsed}s with {len(lines)} detected lines.")
+            return transcribed
+        except Exception as exc:
+            logger.error(f"[EasyOCR] Inference failed: {type(exc).__name__}: {exc}", exc_info=True)
+            raise exc
+
+    def transcribe_with_gemini(self, image_input: Union[str, bytes, Image.Image]) -> str:
+        """
+        Vision cloud inference using Gemini 3.8.
+        """
+        if not self.gemini_client:
+            raise ValueError("Vision inference backend is not available.")
+
+        image = self.decode_image(image_input)
+        try:
+            response = self.gemini_client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=[image, OCR_SYSTEM_PROMPT]
+            )
+            raw_text = response.text.strip() if (response and response.text) else ""
+            if raw_text:
+                return raw_text
+            raise ValueError("Empty response received from Gemini 3.8 Vision.")
+        except Exception as exc:
+            logger.error(f"[Gemini Vision] Inference error: {type(exc).__name__}: {exc}")
+            raise exc
+
+    def transcribe_with_grok(self, image_input: Union[str, bytes, Image.Image]) -> str:
+        """
+        Vision cloud inference using Grok.
+        """
+        if not self.grok_client:
+            raise ValueError("Secondary vision inference backend is not available.")
+
+        if isinstance(image_input, (str, os.PathLike)) and os.path.exists(image_input):
+            with open(image_input, "rb") as img_file:
+                base64_image = base64.b64encode(img_file.read()).decode("utf-8")
+            ext = os.path.splitext(image_input)[1].lower()
+            mime_type = "image/png" if ext == ".png" else "image/jpeg"
         else:
-            merged.append(list(span))
+            image = self.decode_image(image_input)
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG")
+            base64_image = base64.b64encode(buf.getvalue()).decode("utf-8")
+            mime_type = "image/jpeg"
 
-    crops = []
-    for x1, x2 in merged:
-        pad = 4
-        x1p = max(0, x1 - pad)
-        x2p = min(line_img.shape[1], x2 + pad)
-        crop = line_img[:, x1p:x2p]
-        if crop.shape[1] > 5:
-            crops.append(crop)
-    return crops
+        grok_models = ["grok-vision-beta", "grok-2-vision-1212"]
+        last_error = None
 
+        for model_name in grok_models:
+            try:
+                response = self.grok_client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": OCR_SYSTEM_PROMPT
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{mime_type};base64,{base64_image}"
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    max_tokens=2048,
+                    temperature=0.0
+                )
+                raw_text = response.choices[0].message.content.strip() if response.choices else ""
+                if raw_text:
+                    return raw_text
+            except Exception as exc:
+                last_error = exc
+                continue
 
-def run_trocr(img_array):
-    """Run TrOCR inference on a single image crop."""
-    proc, mdl = get_model()
-    pil_img = Image.fromarray(img_array).convert("RGB")
-    pixel_values = proc(pil_img, return_tensors="pt").pixel_values
-    generated_ids = mdl.generate(pixel_values, max_new_tokens=32)
-    return proc.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
+        raise RuntimeError(f"Secondary transformer inference pass failed: {last_error}")
 
+    def transcribe_image_raw_text(self, image_input: Union[str, bytes, Image.Image]) -> str:
+        """
+        Unified Multi-tier OCR Pipeline:
+        1. PyTorch TrOCR Vision Transformer
+        2. Local EasyOCR Pipeline
+        3. Gemini 3.8 Vision API
+        4. Grok Vision API
+        """
+        start_time = time.time()
+        errors = []
 
-def extract_text(image_path):
-    img = cv2.imread(image_path)
-    if img is None:
-        raise FileNotFoundError(f"Could not read image: {image_path}")
+        # Tier 1: PyTorch TrOCR
+        if self.model and self.processor:
+            try:
+                print("\n[TrOCR] Loading model weights and preparing tensor...")
+                raw_text = self.transcribe_with_trocr(image_input)
+                if raw_text and len(raw_text.strip()) > 3:
+                    elapsed = round(time.time() - start_time, 2)
+                    print(f"[TrOCR] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    return raw_text
+            except Exception as e:
+                errors.append(f"TrOCR: {e}")
+                logger.warning(f"[OCR Pipeline] TrOCR tier failed: {e}. Falling back to EasyOCR...")
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.fastNlMeansDenoising(gray, h=15)
-    paper = crop_paper(gray)
+        # Tier 2: Local EasyOCR
+        if self.easyocr_reader:
+            try:
+                print("\n[EasyOCR] Running local CPU tensor inference...")
+                raw_text = self.transcribe_with_easyocr(image_input)
+                if raw_text and len(raw_text.strip()) > 3:
+                    elapsed = round(time.time() - start_time, 2)
+                    print(f"[EasyOCR] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    return raw_text
+            except Exception as e:
+                errors.append(f"EasyOCR: {e}")
+                logger.warning(f"[OCR Pipeline] EasyOCR tier failed: {e}. Falling back to Vision APIs...")
 
-    binary = cv2.adaptiveThreshold(
-        paper, 255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        31, 10
-    )
+        # Tier 3: Gemini 3.8 Vision
+        if self.gemini_client:
+            try:
+                raw_text = self.transcribe_with_gemini(image_input)
+                if raw_text and len(raw_text.strip()) > 3:
+                    elapsed = round(time.time() - start_time, 2)
+                    print(f"[Gemini Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    return raw_text
+            except Exception as e:
+                errors.append(f"GeminiVision: {e}")
+                logger.warning(f"[OCR Pipeline] Gemini Vision tier failed: {e}...")
 
-    # Get lines via horizontal projection
-    h_proj = np.sum(binary, axis=1) // 255
-    threshold = paper.shape[1] * 0.01
-    line_spans = get_spans(h_proj, threshold, min_gap=10)
-    logger.info(f"Found {len(line_spans)} text lines in image")
+        # Tier 4: Grok Vision
+        if self.grok_client:
+            try:
+                raw_text = self.transcribe_with_grok(image_input)
+                if raw_text and len(raw_text.strip()) > 3:
+                    elapsed = round(time.time() - start_time, 2)
+                    print(f"[Grok Vision] Sequence generated in {elapsed}s. Routing to spaCy pipeline...\n")
+                    return raw_text
+            except Exception as e:
+                errors.append(f"GrokVision: {e}")
 
-    full_text = []
-    for i, (y1, y2) in enumerate(line_spans):
-        y1p = max(0, y1 - 4)
-        y2p = min(paper.shape[0], y2 + 4)
-        line_img = paper[y1p:y2p, :]
-        binary_line = binary[y1p:y2p, :]
+        # If all tiers fail
+        error_detail = f"Inference Error: Unable to transcribe prescription image tensor. Causes: {'; '.join(errors)}"
+        logger.error(f"[OCR Critical] {error_detail}")
+        raise HTTPException(status_code=500, detail="Inference Error: Unable to transcribe prescription image tensor.")
 
-        word_crops = get_word_crops(line_img, binary_line)
-        logger.debug(f"Line {i+1}: {len(word_crops)} word crops")
+    def extract_text(self, image_path: str) -> dict:
+        """
+        1. Transcribes raw text via TrOCR / OCR pipeline.
+        2. Routes transcribed text directly into local custom spaCy NLP pipeline v4.
+        3. If spaCy does not find medicines, routes through Multi-Provider LLM Fallback Router.
+        4. Returns structured clinical prescription dictionary.
+        """
+        raw_ocr_text = self.transcribe_image_raw_text(image_path)
 
-        words = []
-        for wc in word_crops:
-            t = run_trocr(wc)
-            if t:
-                words.append(t)
+        # Local spaCy Clinical Entity Extraction & Structuring
+        parsed_data = self.nlp_extractor.parse_prescription(raw_ocr_text)
+        if not parsed_data:
+            parsed_data = {
+                "doctor_name": None,
+                "hospital_name": None,
+                "license_code": None,
+                "sign_present": False,
+                "patient_details": {"name": None, "age": None, "sex": None},
+                "diseases_identified": [],
+                "doctor_suggestions": [],
+                "medicines": [],
+                "raw_text": raw_ocr_text,
+            }
 
-        line_text = " ".join(words)
-        logger.debug(f"Line {i+1} text: {line_text}")
-        if line_text.strip():
-            full_text.append(line_text)
+        # If spaCy could not extract medicines, run through LLM Fallback Router
+        if not parsed_data.get("medicines") and raw_ocr_text:
+            try:
+                from app.services.medicine.gemini_parser import parse_ocr_text
+                llm_parsed = parse_ocr_text(raw_ocr_text)
+                if llm_parsed and llm_parsed.get("medicines"):
+                    parsed_data["medicines"] = llm_parsed.get("medicines", [])
+                    parsed_data["prescribed_medications"] = llm_parsed.get("medicines", [])
+                    parsed_data["scanned_drugs"] = llm_parsed.get("scanned_drugs", [])
+                    if not parsed_data.get("doctor_name") and llm_parsed.get("doctor_name"):
+                        parsed_data["doctor_name"] = llm_parsed["doctor_name"]
+                    if not parsed_data.get("hospital_name") and llm_parsed.get("hospital_name"):
+                        parsed_data["hospital_name"] = llm_parsed["hospital_name"]
+                    if not parsed_data.get("license_code") and llm_parsed.get("doctor_license_number"):
+                        parsed_data["license_code"] = llm_parsed["doctor_license_number"]
+                        parsed_data["doctor_id"] = llm_parsed["doctor_license_number"]
+            except Exception as llm_err:
+                logger.warning(f"LLM fallback extraction skipped: {llm_err}")
 
-    if not full_text:
-        logger.info("No lines detected, fallback: scanning full image")
-        return run_trocr(paper)
-
-    return "\n".join(full_text)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python ocr/ocr_engine.py <path_to_image>")
-        sys.exit(1)
-    result = extract_text(sys.argv[1])
-    print("\n===== EXTRACTED TEXT =====")
-    print(result)
+        parsed_data["raw_text"] = raw_ocr_text
+        parsed_data["extracted_raw_text"] = raw_ocr_text
+        return parsed_data

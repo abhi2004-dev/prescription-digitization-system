@@ -1,17 +1,67 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSavedUserAlarms } from '../services/alarmStorage';
+import { ACTIVE_MEDICATIONS_KEY } from '../services/profileService';
 
 export default function ProfileScreen({ navigation }) {
+  const { user, logout, refreshProfile } = useAuth();
+  const [savedAlarms, setSavedAlarms] = useState([]);
+  const [loadingAlarms, setLoadingAlarms] = useState(false);
+  const [asyncMedications, setAsyncMedications] = useState([]);
+
+  const conditions = user?.current_conditions || [];
+  const serverMedications = user?.active_medications || [];
+  const medications = Array.from(new Set([...serverMedications, ...asyncMedications]));
+
+  const loadAlarms = async () => {
+    try {
+      setLoadingAlarms(true);
+      const data = await getSavedUserAlarms();
+      setSavedAlarms(data || []);
+    } catch (err) {
+      console.error('Error loading user_alarms in ProfileScreen:', err);
+    } finally {
+      setLoadingAlarms(false);
+    }
+  };
+
+  const loadLocalMedications = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(ACTIVE_MEDICATIONS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setAsyncMedications(parsed);
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading local active medications:', err);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAlarms();
+      loadLocalMedications();
+      if (typeof refreshProfile === 'function') {
+        refreshProfile();
+      }
+    }, [])
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Account</Text>
+          <Text style={styles.title}>Patient Account</Text>
         </View>
 
         {/* Profile Info Card */}
@@ -20,39 +70,155 @@ export default function ProfileScreen({ navigation }) {
             <MaterialIcons name="person" size={40} color={COLORS.primary} />
           </View>
           <View style={styles.infoContainer}>
-            <Text style={styles.name}>Alexander Patient</Text>
-            <Text style={styles.email}>alexander@example.com</Text>
+            <Text style={styles.name}>{user?.name || 'Registered Patient'}</Text>
+            <Text style={styles.email}>{user?.email || 'patient@example.com'}</Text>
+            {user?.phone ? (
+              <Text style={styles.phone}>{user.phone}</Text>
+            ) : null}
             <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>Active Account</Text>
+              <Text style={styles.statusText}>Active Profile</Text>
             </View>
           </View>
         </View>
 
+        {/* Clinical Summary Section */}
+        <Text style={styles.sectionTitle}>Medical Profile</Text>
+        <View style={styles.clinicalCard}>
+          <View style={styles.clinicalHeader}>
+            <View style={styles.clinicalHeaderLeft}>
+              <MaterialIcons name="healing" size={20} color={COLORS.primary} />
+              <Text style={styles.clinicalHeaderTitle}>Current Conditions</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+              <Text style={styles.editText}>EDIT</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.chipsRow}>
+            {conditions.length > 0 ? (
+              conditions.map((c, i) => (
+                <View key={i} style={styles.conditionChip}>
+                  <Text style={styles.conditionChipText}>{c}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No conditions specified</Text>
+            )}
+          </View>
+
+          <View style={[styles.clinicalHeader, { marginTop: 16 }]}>
+            <View style={styles.clinicalHeaderLeft}>
+              <MaterialIcons name="medication" size={20} color={COLORS.secondary} />
+              <Text style={styles.clinicalHeaderTitle}>Active Medications</Text>
+            </View>
+          </View>
+          <View style={styles.chipsRow}>
+            {medications.length > 0 ? (
+              medications.map((m, i) => (
+                <View key={i} style={styles.medicationChip}>
+                  <Text style={styles.medicationChipText}>{m}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No active medications recorded</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Active Medication Alarms Section (Action 3 - Read-Only) */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Active Medication Alarms</Text>
+          <View style={styles.alarmCountBadge}>
+            <Text style={styles.alarmCountText}>
+              {savedAlarms.reduce((acc, m) => acc + (m.alarms ? m.alarms.filter((a) => a.enabled).length : 0), 0)} SCHEDULED
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.alarmsCard}>
+          {loadingAlarms ? (
+            <View style={styles.alarmsLoadingContainer}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            </View>
+          ) : savedAlarms.length > 0 ? (
+            savedAlarms.map((item, idx) => {
+              const activeSlots = (item.alarms || []).filter((a) => a.enabled);
+              return (
+                <View key={`prof-alarm-${idx}`} style={styles.alarmMedBlock}>
+                  <View style={styles.alarmMedHeader}>
+                    <View style={styles.alarmMedHeaderLeft}>
+                      <View style={styles.alarmIconCircle}>
+                        <MaterialIcons name="alarm" size={16} color={COLORS.primary} />
+                      </View>
+                      <Text style={styles.alarmMedName}>
+                        {item.medication}
+                        {item.strength ? ` (${item.strength})` : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.activeSlotsCountPill}>
+                      <Text style={styles.activeSlotsCountText}>
+                        {activeSlots.length} active
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.alarmSlotsGrid}>
+                    {activeSlots.length > 0 ? (
+                      activeSlots.map((slot, sIdx) => (
+                        <View key={`prof-slot-${sIdx}`} style={styles.alarmSlotBadge}>
+                          <Text style={styles.alarmSlotEmoji}>{slot.emoji || '⏰'}</Text>
+                          <View style={styles.alarmSlotTextCol}>
+                            <Text style={styles.alarmSlotLabel}>{slot.label}</Text>
+                            <Text style={styles.alarmSlotTime}>{slot.time}</Text>
+                          </View>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.noSlotsText}>No active slots configured</Text>
+                    )}
+                  </View>
+
+                  {idx < savedAlarms.length - 1 && <View style={styles.alarmDivider} />}
+                </View>
+              );
+            })
+          ) : (
+            <View style={styles.emptyAlarmsContainer}>
+              <View style={styles.emptyAlarmIconCircle}>
+                <MaterialIcons name="alarm-off" size={24} color={COLORS.outline} />
+              </View>
+              <Text style={styles.emptyAlarmsTitle}>No Active Medication Reminders</Text>
+              <Text style={styles.emptyAlarmsSubtitle}>
+                Reminders configured in the Prescription Details screen will automatically appear here.
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Settings Sections */}
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <Text style={styles.sectionTitle}>Preferences & Setup</Text>
         <View style={styles.menuContainer}>
-          <TouchableOpacity style={styles.menuItem}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => navigation.navigate('EditProfile')}
+          >
             <View style={styles.menuItemLeft}>
-              <MaterialIcons name="notifications" size={24} color={COLORS.outline} />
-              <Text style={styles.menuItemText}>Notifications</Text>
+              <MaterialIcons name="edit" size={22} color={COLORS.primary} />
+              <Text style={styles.menuItemText}>Update Medical Profile</Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.outlineVariant} />
           </TouchableOpacity>
           <View style={styles.divider} />
           <TouchableOpacity style={styles.menuItem}>
             <View style={styles.menuItemLeft}>
-              <MaterialIcons name="security" size={24} color={COLORS.outline} />
+              <MaterialIcons name="security" size={22} color={COLORS.outline} />
               <Text style={styles.menuItemText}>Privacy & Security</Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.outlineVariant} />
           </TouchableOpacity>
-        </View>
-
-        <Text style={styles.sectionTitle}>App Info</Text>
-        <View style={styles.menuContainer}>
+          <View style={styles.divider} />
           <TouchableOpacity style={styles.menuItem}>
             <View style={styles.menuItemLeft}>
-              <MaterialIcons name="info" size={24} color={COLORS.outline} />
+              <MaterialIcons name="info" size={22} color={COLORS.outline} />
               <Text style={styles.menuItemText}>About PrescriptoAI</Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.outlineVariant} />
@@ -62,7 +228,8 @@ export default function ProfileScreen({ navigation }) {
         {/* Logout Button */}
         <TouchableOpacity 
            style={styles.logoutButton}
-           onPress={() => navigation.replace('Login')}
+           onPress={logout}
+           activeOpacity={0.85}
         >
           <MaterialIcons name="logout" size={20} color="#ba1a1a" />
           <Text style={styles.logoutText}>Sign Out</Text>
@@ -79,11 +246,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   scrollContent: {
-    padding: 24,
+    padding: 20,
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   title: {
     fontSize: 28,
@@ -96,7 +263,7 @@ const styles = StyleSheet.create({
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
@@ -106,50 +273,116 @@ const styles = StyleSheet.create({
     borderColor: COLORS.surfaceHigh,
   },
   avatarContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
     backgroundColor: COLORS.surfaceHigh,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: 'rgba(0,212,255,0.2)',
+    borderColor: 'rgba(0,103,126,0.2)',
     marginRight: 16,
   },
   infoContainer: {
     flex: 1,
   },
   name: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: 'bold',
     color: COLORS.onSurface,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   email: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.onSurfaceVariant,
-    marginBottom: 8,
+    marginBottom: 2,
+  },
+  phone: {
+    fontSize: 13,
+    color: COLORS.outline,
+    marginBottom: 6,
   },
   statusBadge: {
-    backgroundColor: COLORS.secondaryFixed,
+    backgroundColor: 'rgba(0,103,126,0.1)',
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 6,
   },
   statusText: {
     fontSize: 10,
     fontWeight: 'bold',
-    color: '#00201a',
+    color: COLORS.primary,
     textTransform: 'uppercase',
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     color: COLORS.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  clinicalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceHigh,
+  },
+  clinicalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  clinicalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clinicalHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+    marginLeft: 8,
+  },
+  editText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  conditionChip: {
+    backgroundColor: 'rgba(0,103,126,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  conditionChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
+  medicationChip: {
+    backgroundColor: 'rgba(0,107,92,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  medicationChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.secondary,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: COLORS.outline,
+    fontStyle: 'italic',
   },
   menuContainer: {
     backgroundColor: COLORS.surface,
@@ -174,7 +407,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   menuItemText: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.onSurface,
     marginLeft: 12,
     fontWeight: '500',
@@ -182,7 +415,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: COLORS.surfaceHigh,
-    marginLeft: 52,
+    marginLeft: 50,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -191,12 +424,162 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffdad6',
     padding: 16,
     borderRadius: 16,
-    marginTop: 16,
+    marginTop: 8,
   },
   logoutText: {
     marginLeft: 8,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#ba1a1a',
-  }
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  alarmCountBadge: {
+    backgroundColor: 'rgba(0,103,126,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  alarmCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.primary,
+    letterSpacing: 0.5,
+  },
+  alarmsCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceHigh,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  alarmsLoadingContainer: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alarmMedBlock: {
+    paddingVertical: 4,
+  },
+  alarmMedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  alarmMedHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  alarmIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,103,126,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  alarmMedName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+    flexShrink: 1,
+  },
+  activeSlotsCountPill: {
+    backgroundColor: 'rgba(0,107,92,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  activeSlotsCountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.secondary,
+  },
+  alarmSlotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  alarmSlotBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceHigh,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,103,126,0.15)',
+  },
+  alarmSlotEmoji: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  alarmSlotTextCol: {
+    flexDirection: 'column',
+  },
+  alarmSlotLabel: {
+    fontSize: 10,
+    color: COLORS.onSurfaceVariant,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  alarmSlotTime: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+  },
+  noSlotsText: {
+    fontSize: 12,
+    color: COLORS.outline,
+    fontStyle: 'italic',
+    paddingVertical: 4,
+  },
+  alarmDivider: {
+    height: 1,
+    backgroundColor: COLORS.surfaceHigh,
+    marginVertical: 12,
+  },
+  emptyAlarmsContainer: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyAlarmIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.surfaceHigh,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  emptyAlarmsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.onSurfaceVariant,
+    marginBottom: 4,
+  },
+  emptyAlarmsSubtitle: {
+    fontSize: 12,
+    color: COLORS.outline,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 16,
+  },
 });

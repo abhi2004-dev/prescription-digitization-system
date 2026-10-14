@@ -1,0 +1,513 @@
+0-0-1
+0-1-0
+0-1-1
+0.05%
+0.1%
+0.25mg
+0.5mg
+1 Cap
+1 Tab
+1 tsp
+1%
+1-0-0
+1-0-1
+1-1-0
+1-1-1
+1-1-1-1
+1/2 Tab
+10 ml
+1000IU
+1000mg
+100mg
+100ml
+10mg
+10ml
+125mg
+150mg
+15mg
+15ml
+1g
+1mg
+2 Caps
+2 Tabs
+2 tsp
+2%
+2.5mg
+200mg
+200ml
+20mg
+250mg
+25mg
+2g
+2mg
+300mg
+400mg
+40mg
+5 ml
+5%
+500mg
+500ml
+50mg
+5mg
+5ml
+60000IU
+600mg
+650mg
+75mg
+800mg
+80mg
+850mg
+AC
+Aceclofenac
+Acetaminophen
+Acyclovir
+Albuterol
+Aldactone
+Alex
+Allegra
+Allegra 120
+Allegra 180
+Alprax
+Alprazolam
+Amaryl
+Ambien
+Ambroxol
+Amikacin
+Amitriptyline
+Amlodipine
+Amlong
+Amox-Clav
+Amoxicillin
+Arcoxia
+Ascoril
+Aspirin
+Asthalin
+Atarax
+Atenolol
+Ativan
+Atorva
+Atorvastatin
+Augmentin
+Augmentin 625
+Autrin
+Azithromycin
+Aziwok
+BD
+BID
+Baclofen
+Bactrim
+Becadexamin
+Becosules
+Benadryl
+Betaloc
+Betamethasone
+Betnesol
+Bilastine
+Bilaxten
+Bisoprolol
+Brufen
+Budecort
+Budesonide
+Calan
+Calcirol 60K
+Calcium Carbonate
+Calmpose
+Calpol
+Calpol 650
+Candid
+Canditral
+Cap
+Capsule
+Carbamazepine
+Cardace
+Cardizem
+Cefixime
+Ceftriaxone
+Ceftum
+Cefuroxime
+Celebrex
+Celecoxib
+Celin
+Cetirizine
+Cetzine
+Cholecalciferol
+Ciplox
+Ciprofloxacin
+Clarithromycin
+Claritin
+Clindamycin
+Clonafit
+Clonazepam
+Clopidogrel
+Clotrimazole
+Combiflam
+Concor
+Coumadin
+Cozaar
+Cream
+Crestor
+Crocin
+Cymbalta
+Dalacin
+Dapagliflozin
+Decadron
+Defcort
+Deflazacort
+Deltasone
+Deplatt
+Deriphyllin
+Dexamethasone
+Dexona
+Dextromethorphan
+Diamicron
+Diazepam
+Diclofenac
+Dicyclomine
+Diflucan
+Digoxin
+Diltiazem
+Dolo 650
+Domperidone
+Doxt-SL
+Doxycycline
+Drops
+Drotaverine
+Drotin-M
+Duloxetine
+Duolin
+Duphalac
+Duzela
+Dytor
+Ear Drops
+Ecosprin
+Ecosprin 150
+Ecosprin 75
+Effexor
+Eltroxin
+Emeset
+Empagliflozin
+Enalapril
+Encorate
+Erythromycin
+Escitalopram
+Esomeprazole
+Etoricoxib
+Eye Drops
+Ezetimibe
+Eztrol
+Famotidine
+Fenofibrate
+Ferrous Sulfate
+Fexofenadine
+Flagyl
+Flonase
+Fluconazole
+Fludac
+Fluoxetine
+Fluticasone
+Folic Acid
+Folvite
+Foracort
+Forcan
+Formoterol
+Forxiga
+Furosemide
+Gabapentin
+Gabapin
+Galvus
+Galvus Met
+Gel
+Gentamicin
+Gliclazide
+Glimepiride
+Glipizide
+Glucophage
+Glycomet
+Glycomet GP 1
+Glycomet GP 2
+Grilinctus
+HCTZ
+HS
+Human Mixtard
+Hydrochlorothiazide
+Hydrocortisone
+Hydroxyzine
+Ibuprofen
+Imodium
+Inderal
+Indomethacin
+Inhaler
+Inj
+Injection
+Insulin Glargine
+Ipratropium
+Isosorbide Mononitrate
+Itaspor
+Itraconazole
+Ivabradine
+Januvia
+Jardiance
+Keppra
+Ketanov
+Ketoconazole
+Ketorolac
+Klaricid
+Klonopin
+Lactulose
+Lanoxin
+Lansoprazole
+Lantus
+Lasix
+Levaquin
+Levetiracetam
+Levipil
+Levocet
+Levocet M
+Levocetirizine
+Levofloxacin
+Levothyroxine
+Lexapro
+Limcee
+Linagliptin
+Linezolid
+Linid
+Liofen
+Lipicard
+Lipitor
+Lisinopril
+Livogen
+Loperamide
+Loratadine
+Lorazepam
+Losar
+Losartan
+Lotion
+Lyrica
+Maxgalin
+Medrol
+Mefenamic Acid
+Meftal
+Meftal-Spas
+Meloxicam
+Meropenem
+Metformin
+Methylcobalamin
+Methylprednisolone
+Metoclopramide
+Metoprolol
+Metrogyl
+Metronidazole
+Mobic
+Monotrate
+Montair LC
+Montek LC
+Montelukast
+Mouthwash
+Mucolite
+Naprosyn
+Naproxen
+Neurobion
+Neurobion Forte
+Neurontin
+Nexito
+Nexium
+Nitrocontin
+Nitrofurantoin
+Nitroglycerin
+Nizral
+Norflox-TZ
+Norfloxacin
+Norvasc
+Novorapid
+Nucoxia
+Nurokind
+OD
+Ofloxacin
+Oint
+Ointment
+Olanzapine
+Oleanz
+Omeprazole
+Omez
+Omez-D
+Omnacortil
+Ondansetron
+Optineuron
+Orofer XT
+Oseltamivir
+P-650
+PC
+PRN
+Pan 40
+Pan-D
+Pantocid
+Pantocid 40
+Pantoprazole
+Paracetamol
+Paroxetine
+Patch
+Paxil
+Pepcid
+Perinorm
+Pioglitazone
+Pioz
+Piperacillin-Tazobactam
+Piroxicam
+Plavix
+Powder
+Pravastatin
+Prednisolone
+Prednisone
+Pregabalin
+Pregeb
+Prevacid
+ProAir
+Prolomet XL 25
+Prolomet XL 50
+Propranolol
+Prozac
+Pulmicort
+QHS
+QID
+Quetiapine
+Rabeprazole
+Rablet
+Ramipril
+Ranitidine
+Rantac
+Razo
+Reglan
+Remdesivir
+Respules
+Restyl
+Revital
+Risperidone
+Rivotril
+Rosuvas
+Rosuvastatin
+Rozavel
+SOS
+Sachet
+Sacubitril-Valsartan
+Salbutamol
+Seretide
+Seroquel
+Serta
+Sertraline
+Shelcal
+Shelcal 500
+Simvastatin
+Singulair
+Sitagliptin
+Sodium Valproate
+Solution
+Sompraz
+Spiriva
+Spironolactone
+Spray
+Stat
+Storvas
+Sucrafil
+Sucralfate
+Sulfamethoxazole
+Supradyn
+Susp
+Suspension
+Synthroid
+Syp
+Syrup
+TDS
+TID
+Tab
+Tablet
+Tamiflu
+Taxim-O
+Tayom 60K
+Tegretol
+Telma
+Telma 40
+Telma AM
+Telma H
+Telmisartan
+Tenormin
+Terbinafine
+Theophylline
+Thyronorm
+Tiotropium
+Tizanidine
+Torsemide
+Trajenta
+Tramadol
+Trapex
+Trimethoprim
+Tryptomer
+Tyza
+Udiliv
+Ultracet
+Ursodeoxycholic Acid
+Valacyclovir
+Valcivir
+Valium
+Vancomycin
+Vasotec
+Venlafaxine
+Ventolin
+Verapamil
+Vildagliptin
+Vitamin C
+Vitamin D3
+Voglibose
+Volibo
+Vomistop
+Voriconazole
+Voveran
+Voveran SR
+Warfarin
+Wysolone
+Xanax
+Xyzal
+Zantac
+Zenflox
+Zerodol
+Zerodol-P
+Zerodol-SP
+Zestril
+Zifi
+Zincovit
+Zithromax
+Zocor
+Zofran
+Zoloft
+Zolpidem
+Zovirax
+Zyrtec
+after breakfast
+after dinner
+after lunch
+after meals
+as needed
+as needed for pain
+at bedtime
+before breakfast
+before dinner
+before lunch
+before meals
+continue
+every 12 hours
+every 6 hours
+every 8 hours
+for 1 month
+for 10 days
+for 14 days
+for 21 days
+for 3 days
+for 5 days
+for 7 days
+four times daily
+on empty stomach
+once daily
+stat dose
+thrice daily
+twice daily
+with meals
+with water
