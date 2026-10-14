@@ -96,7 +96,9 @@ def _extract_with_local_regex(text: str) -> Dict[str, Any]:
     """
     Deterministic rule-based Regex fallback parser:
     Extracts clinical entities directly from OCR text strings when accelerated
-    inference is unavailable or hits quotas.
+    inference is unavailable or returns unparsed tokens.
+    Guarantees full schema alignment with frontend state variables:
+    {"medicines": [{"name": ..., "dosage": ..., "frequency": ..., ...}]}
     """
     doc_name = ""
     hosp_name = ""
@@ -109,7 +111,14 @@ def _extract_with_local_regex(text: str) -> Dict[str, Any]:
 
     lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    for line in lines:
+    for raw_line in lines:
+        # Strip leading numbering, bullets, and Rx prefixes for clean parsing
+        line = re.sub(r'^\s*(?:\d+[\.\)\-:]|\*|•|-|Rx:?)\s*', '', raw_line, flags=re.IGNORECASE).strip()
+        if not line:
+            continue
+
+        lower_line = line.lower()
+
         # 1. Doctor Name (Search for 'Dr.' or 'Doctor')
         if not doc_name:
             m = re.search(r'(?:Dr\.?|Doctor)\s+([A-Za-z\.\s]+?)(?:,|\n|\r|MBBS|MD|MS|BAMS|BHMS|Reg|Lic|\d|$)', line, re.IGNORECASE)
@@ -157,83 +166,136 @@ def _extract_with_local_regex(text: str) -> Dict[str, Any]:
             if diag_text:
                 diagnosis.append(diag_text)
 
-        # 8. Medication Detection & Parsing
-        has_form = bool(re.search(r'\b(Tab(?:let)?|Cap(?:sule)?|Syr(?:up)?|Inj(?:ection)?|Oint(?:ment)?|Drops?|Susp(?:ension)?)\b', line, re.IGNORECASE))
-        has_freq = bool(re.search(r'\b(\d+\s*-\s*\d+\s*-\s*\d+|\d+\s*-\s*\d+|OD|BD|BID|TDS|TID|QID|HS|SOS|STAT|once daily|twice daily|thrice daily)\b', line, re.IGNORECASE))
-        has_strength = bool(re.search(r'\b(\d+(?:\.\d+)?\s*(?:mg|gm|ml|mcg|iu))\b', line, re.IGNORECASE))
+        # Skip headers from being treated as medications
+        if any(lower_line.startswith(p) for p in ('dr.', 'dr ', 'doctor', 'patient', 'pt.', 'pt ', 'hospital', 'clinic', 'age', 'sex', 'gender', 'reg', 'lic', 'date', 'advice', 'diagnosis', 'dx', 'impression', 'rx')):
+            continue
 
-        is_med_line = (has_form and (has_freq or has_strength)) or (has_freq and has_strength)
-        if not is_med_line and has_form and len(line.split()) >= 2:
-            if not line.lower().startswith(('dr', 'rx', 'patient', 'name', 'age', 'lic', 'reg', 'advice', 'diag', 'hospital', 'clinic')):
-                is_med_line = True
+        # 8. Medication Detection & Parsing
+        form_m = re.search(r'\b(Tab(?:let)?|Cap(?:sule)?|Syr(?:up)?|Inj(?:ection)?|Oint(?:ment)?|Drops?|Susp(?:ension)?|Cream|Gel|Inhaler|Lotion)\b', line, re.IGNORECASE)
+        form = form_m.group(1).capitalize() if form_m else ''
+
+        str_m = re.search(r'\b(\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu|%))\b', line, re.IGNORECASE)
+        strength = str_m.group(1).strip() if str_m else ''
+
+        num_str_m = None
+        if not strength:
+            num_str_m = re.search(r'\b([A-Za-z]{3,})\s+(\d{2,4})\b', line)
+            if num_str_m:
+                strength = f"{num_str_m.group(2)}mg"
+
+        freq_m = re.search(r'\b(\d+\s*-\s*\d+\s*-\s*\d+|\d+\s*-\s*\d+|OD|BD|BID|TDS|TID|QID|Q4H|Q6H|HS|SOS|STAT|once daily|twice daily|thrice daily|daily)\b', line, re.IGNORECASE)
+        frequency = freq_m.group(1).replace(' ', '') if freq_m else ''
+
+        dur_m = re.search(r'(?:for|x)?\s*(\d+\s*(?:days?|weeks?|months?))\b', line, re.IGNORECASE)
+        duration = dur_m.group(1).strip() if dur_m else ''
+
+        timing_m = re.search(r'\b(after\s+food|before\s+food|empty\s+stomach|after\s+meals?|before\s+meals?|at\s+bedtime|with\s+water|after\s+lunch|before\s+lunch|after\s+dinner|before\s+dinner|after\s+breakfast|before\s+breakfast)\b', line, re.IGNORECASE)
+        timing = timing_m.group(1).strip() if timing_m else ''
+
+        is_med_line = bool(form or strength or frequency or (num_str_m is not None))
+        if not is_med_line and re.match(r'^\s*Rx\b', raw_line, re.IGNORECASE) and len(line.split()) >= 1:
+            is_med_line = True
 
         if is_med_line:
-            form_m = re.search(r'\b(Tab(?:let)?|Cap(?:sule)?|Syr(?:up)?|Inj(?:ection)?|Oint(?:ment)?|Drops?|Susp(?:ension)?)\b', line, re.IGNORECASE)
-            form = form_m.group(1).capitalize() if form_m else ''
-
-            str_m = re.search(r'\b(\d+(?:\.\d+)?\s*(?:mg|gm|ml|mcg|iu))\b', line, re.IGNORECASE)
-            strength = str_m.group(1) if str_m else ''
-
-            freq_m = re.search(r'\b(\d+\s*-\s*\d+\s*-\s*\d+|\d+\s*-\s*\d+|OD|BD|BID|TDS|TID|QID|HS|SOS|STAT|once daily|twice daily|thrice daily)\b', line, re.IGNORECASE)
-            frequency = freq_m.group(1).replace(' ', '') if freq_m else ''
-
-            dur_m = re.search(r'(?:for|x)?\s*(\d+\s*(?:days?|weeks?|months?))\b', line, re.IGNORECASE)
-            duration = dur_m.group(1) if dur_m else ''
-
-            timing_m = re.search(r'\b(after\s+food|before\s+food|empty\s+stomach|after\s+meals?|before\s+meals?|at\s+bedtime|with\s+water|after\s+lunch|before\s+lunch|after\s+dinner|before\s+dinner|after\s+breakfast|before\s+breakfast)\b', line, re.IGNORECASE)
-            timing = timing_m.group(1) if timing_m else ''
-
             # Clean name without stripping characters inside valid words
             cleaned = line
-            for token in [form_m.group(0) if form_m else '',
-                          str_m.group(0) if str_m else '',
-                          freq_m.group(0) if freq_m else '',
-                          f'for {duration}' if duration else '',
-                          duration,
-                          timing,
-                          'Rx:', 'Rx']:
-                if token:
-                    cleaned = re.sub(re.escape(token), ' ', cleaned, flags=re.IGNORECASE)
+            tokens_to_remove = [
+                form_m.group(0) if form_m else '',
+                str_m.group(0) if str_m else '',
+                num_str_m.group(2) if num_str_m else '',
+                freq_m.group(0) if freq_m else '',
+                f'for {duration}' if duration else '',
+                f'x {duration}' if duration else '',
+                duration,
+                timing,
+                'Rx:', 'Rx'
+            ]
+            for tok in tokens_to_remove:
+                if tok:
+                    cleaned = re.sub(r'\b' + re.escape(tok) + r'\b', ' ', cleaned, flags=re.IGNORECASE)
 
-            # Strip whole-word 'for' or 'x' safely
-            cleaned = re.sub(r'\b(?:for|x)\b', ' ', cleaned, flags=re.IGNORECASE)
+            # Strip whole-word boilerplate safely
+            cleaned = re.sub(r'\b(?:for|x|tab|capsule|tablet|syrup|inj|drops|suspension|rx)\b', ' ', cleaned, flags=re.IGNORECASE)
             drug_name = re.sub(r'[^A-Za-z0-9\s\-]', ' ', cleaned)
-            drug_name = ' '.join(drug_name.split())
+            drug_name = ' '.join(drug_name.split()).title()
 
-            if drug_name and len(drug_name) >= 3 and drug_name.lower() not in ('patient', 'doctor', 'hospital', 'clinic'):
+            if drug_name and len(drug_name) >= 2 and drug_name.lower() not in ('patient', 'doctor', 'hospital', 'clinic', 'prescription', 'tablets', 'capsules', 'none', 'null', 'medication'):
                 sched = parse_dosage_schedule(frequency) if parse_dosage_schedule else {}
+                sched_slots = sched.get('schedule_slots') or {'morning': False, 'afternoon': False, 'night': False}
+                sched_text = sched.get('schedule_text') or ''
+
+                # Contextual slot inference for natural language frequencies
+                if not any(sched_slots.values()):
+                    freq_or_time = f"{frequency} {timing}".lower()
+                    if any(w in freq_or_time for w in ("morning", "breakfast", "1-0-0")):
+                        sched_slots["morning"] = True
+                    if any(w in freq_or_time for w in ("afternoon", "lunch", "noon", "0-1-0")):
+                        sched_slots["afternoon"] = True
+                    if any(w in freq_or_time for w in ("night", "bedtime", "evening", "dinner", "0-0-1", "hs")):
+                        sched_slots["night"] = True
+                    if any(w in freq_or_time for w in ("twice daily", "bd", "bid", "1-0-1")):
+                        sched_slots["morning"] = True
+                        sched_slots["night"] = True
+                    if any(w in freq_or_time for w in ("three times", "thrice", "tds", "tid", "1-1-1")):
+                        sched_slots["morning"] = True
+                        sched_slots["afternoon"] = True
+                        sched_slots["night"] = True
+
                 dosage_parts = [p for p in [strength, frequency, f'for {duration}' if duration else '', timing] if p]
-                dosage_formatted = ', '.join(dosage_parts) if dosage_parts else 'As directed by physician'
+                dosage_formatted = ', '.join(dosage_parts) if dosage_parts else (strength or 'As directed by physician')
+
+                if not sched_text:
+                    sched_text = frequency or dosage_formatted or ''
+
+                dosage_val = strength or dosage_formatted or ''
+
                 medicines.append({
+                    'id': f'med-{len(medicines)}',
                     'name': drug_name,
                     'drug_name': drug_name,
                     'drug': drug_name,
-                    'dosage_formatted': dosage_formatted,
-                    'instructions': dosage_formatted,
-                    'schedule_text': sched.get('schedule_text') or dosage_formatted,
-                    'schedule_slots': sched.get('schedule_slots') or {'morning': False, 'afternoon': False, 'night': False},
-                    'strength': strength,
-                    'form': form,
-                    'frequency': frequency,
-                    'duration': duration,
-                    'timing': timing
+                    'dosage': dosage_val,
+                    'strength': strength or '',
+                    'form': form or '',
+                    'frequency': frequency or '',
+                    'duration': duration or '',
+                    'timing': timing or '',
+                    'dosage_formatted': dosage_formatted or '',
+                    'instructions': dosage_formatted or '',
+                    'schedule_text': sched_text or '',
+                    'schedule': sched_text or '',
+                    'schedule_slots': sched_slots
                 })
 
     return {
-        'doctor_name': doc_name or None,
-        'hospital_name': hosp_name or None,
-        'patient_name': pat_name or None,
-        'patient_age': pat_age or None,
-        'doctor_license_number': doc_lic or None,
+        'doctor_name': doc_name or "",
+        'hospital_name': hosp_name or "",
+        'patient_name': pat_name or "",
+        'patient_age': pat_age or "",
+        'patient_details': {
+            'name': pat_name or "",
+            'age': pat_age or "",
+            'sex': ""
+        },
+        'doctor_license_number': doc_lic or "",
+        'doctor_id': doc_lic or "",
+        'license_code': doc_lic or "",
         'medicines': medicines,
+        'prescribed_medications': medicines,
+        'scanned_drugs': [m['name'] for m in medicines if m.get('name')],
         'doctor_suggestions': advice,
-        'diseases_identified': diagnosis
+        'doctor_advice': advice,
+        'diseases_identified': diagnosis,
+        'raw_text': text or "",
+        'extracted_raw_text': text or "",
+        'llm_provider': "MediScan Local NLP"
     }
 
 def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provider: str = "MediScan Local NLP") -> Dict[str, Any]:
     """
     Standardizes the parsed output dictionary so it perfectly aligns with
     what the frontend and safety endpoints expect.
+    Ensures all keys match and missing string fields default to safe null strings ("").
     """
     doc_name = str(data.get("doctor_name") or "").strip()
     hosp_name = str(data.get("hospital_name") or "").strip()
@@ -242,10 +304,13 @@ def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provid
     doc_lic = str(data.get("doctor_license_number") or data.get("license_code") or data.get("doctor_id") or "").strip()
 
     raw_medicines = data.get("medicines") or []
+    if not raw_medicines and data.get("prescribed_medications"):
+        raw_medicines = data.get("prescribed_medications") or []
+
     standardized_meds = []
     scanned_drug_names = []
 
-    for m in raw_medicines:
+    for idx, m in enumerate(raw_medicines):
         if isinstance(m, str):
             med_dict = {"name": m.strip(), "dosage_formatted": "As directed by physician"}
         elif isinstance(m, dict):
@@ -256,71 +321,99 @@ def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provid
             med_dict = {}
 
         drug_name = str(med_dict.get("name") or med_dict.get("drug_name") or med_dict.get("drug") or "").strip()
-        dosage = str(med_dict.get("dosage_formatted") or med_dict.get("instructions") or "").strip()
-
         if not drug_name or drug_name.lower() in ("medication", "none", "null"):
             continue
 
-        # Parse schedule slots if helper available
-        schedule_info = {"schedule_text": "", "schedule_slots": {"morning": False, "afternoon": False, "night": False}}
-        if parse_dosage_schedule:
-            schedule_info = parse_dosage_schedule(dosage)
+        dosage_formatted = str(med_dict.get("dosage_formatted") or med_dict.get("instructions") or "").strip()
+        strength = str(med_dict.get("strength") or "").strip()
+        dosage = str(med_dict.get("dosage") or strength or dosage_formatted or "").strip()
+        form = str(med_dict.get("form") or "").strip()
+        frequency = str(med_dict.get("frequency") or "").strip()
+        duration = str(med_dict.get("duration") or "").strip()
+        timing = str(med_dict.get("timing") or "").strip()
 
-        # Contextual fallback for natural language dosage instructions
-        dosage_lower = dosage.lower()
-        if "morning" in dosage_lower or "breakfast" in dosage_lower or "1-0-0" in dosage_lower:
-            schedule_info["schedule_slots"]["morning"] = True
-        if "afternoon" in dosage_lower or "lunch" in dosage_lower or "noon" in dosage_lower or "0-1-0" in dosage_lower:
-            schedule_info["schedule_slots"]["afternoon"] = True
-        if "night" in dosage_lower or "bedtime" in dosage_lower or "evening" in dosage_lower or "dinner" in dosage_lower or "0-0-1" in dosage_lower:
-            schedule_info["schedule_slots"]["night"] = True
-        if "twice daily" in dosage_lower or "bd" in dosage_lower or "1-0-1" in dosage_lower:
-            schedule_info["schedule_slots"]["morning"] = True
-            schedule_info["schedule_slots"]["night"] = True
-        if "three times" in dosage_lower or "thrice" in dosage_lower or "tds" in dosage_lower or "1-1-1" in dosage_lower:
-            schedule_info["schedule_slots"]["morning"] = True
-            schedule_info["schedule_slots"]["afternoon"] = True
-            schedule_info["schedule_slots"]["night"] = True
+        # Schedule slots
+        existing_slots = med_dict.get("schedule_slots")
+        if isinstance(existing_slots, dict) and any(existing_slots.values()):
+            schedule_slots = existing_slots
+            schedule_text = str(med_dict.get("schedule_text") or med_dict.get("schedule") or "").strip()
+        else:
+            schedule_info = {"schedule_text": "", "schedule_slots": {"morning": False, "afternoon": False, "night": False}}
+            if parse_dosage_schedule:
+                schedule_info = parse_dosage_schedule(frequency or dosage_formatted or dosage)
+            schedule_slots = schedule_info.get("schedule_slots", {"morning": False, "afternoon": False, "night": False})
+            schedule_text = schedule_info.get("schedule_text", "")
+
+        # Fallback slot inference
+        dosage_lower = f"{dosage} {dosage_formatted} {frequency} {timing}".lower()
+        if not any(schedule_slots.values()):
+            if "morning" in dosage_lower or "breakfast" in dosage_lower or "1-0-0" in dosage_lower:
+                schedule_slots["morning"] = True
+            if "afternoon" in dosage_lower or "lunch" in dosage_lower or "noon" in dosage_lower or "0-1-0" in dosage_lower:
+                schedule_slots["afternoon"] = True
+            if "night" in dosage_lower or "bedtime" in dosage_lower or "evening" in dosage_lower or "dinner" in dosage_lower or "0-0-1" in dosage_lower or "hs" in dosage_lower:
+                schedule_slots["night"] = True
+            if "twice daily" in dosage_lower or "bd" in dosage_lower or "bid" in dosage_lower or "1-0-1" in dosage_lower:
+                schedule_slots["morning"] = True
+                schedule_slots["night"] = True
+            if "three times" in dosage_lower or "thrice" in dosage_lower or "tds" in dosage_lower or "tid" in dosage_lower or "1-1-1" in dosage_lower:
+                schedule_slots["morning"] = True
+                schedule_slots["afternoon"] = True
+                schedule_slots["night"] = True
+
+        instructions_val = dosage_formatted or dosage or "As directed by physician"
+        sched_val = schedule_text or frequency or instructions_val
 
         standardized_item = {
+            "id": med_dict.get("id") or f"med-{len(standardized_meds)}",
             "name": drug_name,
             "drug_name": drug_name,
             "drug": drug_name,
-            "dosage_formatted": dosage or "As directed by physician",
-            "instructions": dosage or "As directed by physician",
-            "schedule_text": schedule_info.get("schedule_text", "") or (dosage or "As directed by physician"),
-            "schedule_slots": schedule_info.get("schedule_slots", {"morning": False, "afternoon": False, "night": False}),
-            "schedule": schedule_info.get("schedule_text", "") or (dosage or "As directed by physician"),
-            "strength": med_dict.get("strength", ""),
-            "form": med_dict.get("form", ""),
-            "frequency": med_dict.get("frequency", ""),
-            "duration": med_dict.get("duration", ""),
-            "timing": med_dict.get("timing", "")
+            "dosage": dosage or strength or "",
+            "strength": strength or (dosage if re.search(r'\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu)', dosage, re.I) else ""),
+            "form": form,
+            "frequency": frequency,
+            "duration": duration,
+            "timing": timing,
+            "dosage_formatted": instructions_val,
+            "instructions": instructions_val,
+            "schedule_text": sched_val,
+            "schedule": sched_val,
+            "schedule_slots": schedule_slots,
         }
         standardized_meds.append(standardized_item)
         scanned_drug_names.append(drug_name)
 
+    # Patient details dictionary
+    patient_sex = ""
+    if isinstance(data.get("patient_details"), dict):
+        patient_sex = str(data["patient_details"].get("sex") or "").strip()
+    elif data.get("patient_sex"):
+        patient_sex = str(data.get("patient_sex")).strip()
+
+    patient_details = {
+        "name": pat_name,
+        "age": pat_age,
+        "sex": patient_sex
+    }
+
     return {
-        "doctor_name": doc_name or None,
-        "hospital_name": hosp_name or None,
-        "patient_name": pat_name or None,
-        "patient_age": pat_age or None,
-        "patient_details": {
-            "name": pat_name or None,
-            "age": pat_age or None,
-            "sex": data.get("patient_sex") or (data.get("patient_details", {}).get("sex") if isinstance(data.get("patient_details"), dict) else None)
-        },
-        "doctor_license_number": doc_lic or None,
-        "doctor_id": doc_lic or None,
-        "license_code": doc_lic or None,
+        "doctor_name": doc_name,
+        "hospital_name": hosp_name,
+        "patient_name": pat_name,
+        "patient_age": pat_age,
+        "patient_details": patient_details,
+        "doctor_license_number": doc_lic,
+        "doctor_id": doc_lic,
+        "license_code": doc_lic,
         "medicines": standardized_meds,
         "prescribed_medications": standardized_meds,
         "scanned_drugs": scanned_drug_names,
         "doctor_suggestions": data.get("doctor_suggestions") or data.get("doctor_advice") or [],
         "doctor_advice": data.get("doctor_suggestions") or data.get("doctor_advice") or [],
         "diseases_identified": data.get("diseases_identified") or [],
-        "raw_text": raw_text,
-        "extracted_raw_text": raw_text,
+        "raw_text": raw_text or "",
+        "extracted_raw_text": raw_text or "",
         "llm_provider": provider
     }
 
@@ -413,8 +506,11 @@ def parse_ocr_text(raw_input: Union[List[str], str, Image.Image, bytes]) -> Dict
             if raw_response_text:
                 cleaned_json = _clean_json_text(raw_response_text)
                 parsed_json = json.loads(cleaned_json)
-                logger.info("[spaCy Entity Extractor] Entity recognition and normalization complete.")
-                return _standardize_prescription_output(parsed_json, text_payload, provider="MediScan Local NLP")
+                if parsed_json.get("medicines") and len(parsed_json["medicines"]) > 0:
+                    logger.info("[spaCy Entity Extractor] Entity recognition and normalization complete.")
+                    return _standardize_prescription_output(parsed_json, text_payload, provider="MediScan Local NLP")
+                else:
+                    logger.info("[MediScan Local NLP] Primary entity pass returned empty list. Engaging local regex extractor...")
 
     except Exception:
         # Silently catch network drops, quotas, or timeouts without printing external provider errors
