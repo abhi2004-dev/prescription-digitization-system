@@ -411,7 +411,8 @@ class OCREngine:
                         parsed_data["hospital_name"] = llm_parsed["hospital_name"]
                     if not parsed_data.get("license_code") and llm_parsed.get("doctor_license_number"):
                         parsed_data["license_code"] = llm_parsed["doctor_license_number"]
-                        parsed_data["doctor_id"] = llm_parsed["doctor_license_number"]
+            except HTTPException:
+                raise
             except Exception as llm_err:
                 logger.debug(f"[MediScan Local NLP] Secondary extraction note: {llm_err}")
 

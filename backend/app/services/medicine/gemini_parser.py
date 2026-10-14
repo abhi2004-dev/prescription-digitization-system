@@ -8,6 +8,7 @@ from typing import Union, List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from PIL import Image
+from fastapi import HTTPException
 
 # Modern official Google GenAI SDK (Internal engine)
 try:
@@ -48,8 +49,8 @@ TIMEOUT_SECONDS = 120
 TIMEOUT_MS = 120000  # Strict 120-second timeout
 
 class Medicine(BaseModel):
-    name: str = Field(description="The actual pharmaceutical name, correcting minor typos.")
-    dosage_formatted: str = Field(description="Dosage and frequency in plain English.")
+    name: str = Field(description="The pharmaceutical medication name or brand name (e.g., Amoxicillin, Paracetamol, Dolo, Pantocid).")
+    dosage_formatted: str = Field(default="", description="Dosage instructions, strength, and frequency (e.g., 500mg, 1-0-1 for 5 days after food).")
 
 class PrescriptionData(BaseModel):
     doctor_name: str = Field(default="", description="Return empty string if not found.")
@@ -57,17 +58,17 @@ class PrescriptionData(BaseModel):
     patient_name: str = Field(default="", description="Return empty string if not found.")
     patient_age: str = Field(default="", description="Return empty string if not found.")
     doctor_license_number: str = Field(default="", description="Return empty string if not found.")
-    medicines: List[Medicine] = Field(default_factory=list, description="List of verified medicines.")
+    medicines: List[Medicine] = Field(default_factory=list, description="List of all extracted medications. Do not omit any drug.")
 
-SYSTEM_PROMPT = """You are a strict clinical data extraction engine parsing noisy OCR text or prescription images.
+SYSTEM_PROMPT = """You are a clinical extraction engine. You MUST extract ANY potential medication name from the raw OCR text, even if misspelled, fragmented, or obscured by noise. Look for context clues like 'Rx', 'mg', 'Tab', or dosage schedules (e.g., 1-0-1). Do not omit any drug.
 
-CRITICAL RULES:
-* ZERO HALLUCINATIONS: Do not guess or invent medications. If a word or phrase is not a recognized pharmaceutical, discard it completely.
-* IGNORE NOISE: Discard doctor signatures, printed boilerplate labels ("Rx", "Age", "Sex", "Lic No", "Address"), and OCR artifacts.
-* AUTOCORRECT TYPOS: If OCR extracts a clear typo of a real medication, correct it to the valid name.
-* FORMAT DOSAGES: Translate clinical shorthand into clean English instructions.
+CRITICAL INSTRUCTIONS:
+1. Extract ALL medications, brand names, generic formulations, syrups, tablets, capsules, drops, ointments, and injections.
+2. Even if a medication name is misspelled, split across words, or obscured by OCR artifacts, extract it and normalize it to the valid pharmaceutical name.
+3. Extract accompanying dosage info (strength like 500mg, 650mg, 40mg, 10ml; frequency like 1-0-1, OD, BD, TDS, daily; duration and timing).
+4. Extract doctor name, clinic/hospital name, patient name, patient age, and license number if present. For any missing fields, provide an empty string "".
 
-Return ONLY a valid JSON object with the following schema:
+Return ONLY a valid JSON object matching this exact schema:
 {
   "doctor_name": "string (empty string if not found)",
   "hospital_name": "string (empty string if not found)",
@@ -76,8 +77,8 @@ Return ONLY a valid JSON object with the following schema:
   "doctor_license_number": "string (empty string if not found)",
   "medicines": [
     {
-      "name": "Actual pharmaceutical name",
-      "dosage_formatted": "Dosage and frequency in plain English"
+      "name": "Medication name (e.g. Amoxicillin, Paracetamol, Dolo, Pantocid)",
+      "dosage_formatted": "Dosage and frequency (e.g. 500mg 1-0-1 for 5 days after food)"
     }
   ]
 }"""
@@ -91,205 +92,6 @@ def _clean_json_text(text: str) -> str:
         cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned)
     return cleaned.strip()
-
-def _extract_with_local_regex(text: str) -> Dict[str, Any]:
-    """
-    Deterministic rule-based Regex fallback parser:
-    Extracts clinical entities directly from OCR text strings when accelerated
-    inference is unavailable or returns unparsed tokens.
-    Guarantees full schema alignment with frontend state variables:
-    {"medicines": [{"name": ..., "dosage": ..., "frequency": ..., ...}]}
-    """
-    doc_name = ""
-    hosp_name = ""
-    pat_name = ""
-    pat_age = ""
-    doc_lic = ""
-    medicines = []
-    advice = []
-    diagnosis = []
-
-    lines = [l.strip() for l in text.splitlines() if l.strip()]
-
-    for raw_line in lines:
-        # Strip leading numbering, bullets, and Rx prefixes for clean parsing
-        line = re.sub(r'^\s*(?:\d+[\.\)\-:]|\*|•|-|Rx:?)\s*', '', raw_line, flags=re.IGNORECASE).strip()
-        if not line:
-            continue
-
-        lower_line = line.lower()
-
-        # 1. Doctor Name (Search for 'Dr.' or 'Doctor')
-        if not doc_name:
-            m = re.search(r'(?:Dr\.?|Doctor)\s+([A-Za-z\.\s]+?)(?:,|\n|\r|MBBS|MD|MS|BAMS|BHMS|Reg|Lic|\d|$)', line, re.IGNORECASE)
-            if m:
-                cand = m.group(1).strip().rstrip('.')
-                if len(cand) > 1 and cand.lower() not in ('prescription', 'hospital', 'clinic'):
-                    doc_name = f"Dr. {cand}"
-
-        # 2. Hospital / Clinic Name
-        if not hosp_name:
-            if re.search(r'\b(?:Hospital|Clinic|Healthcare|Care\s+Cent(?:er|re)|Medical\s+Cent(?:er|re)|Dispensary|Nursing\s+Home)\b', line, re.IGNORECASE):
-                hosp_clean = re.sub(r'^(?:at|in|near)\s+', '', line, flags=re.IGNORECASE).strip()
-                if len(hosp_clean) > 2:
-                    hosp_name = hosp_clean
-
-        # 3. Patient Name
-        if not pat_name:
-            m = re.search(r'(?:Patient(?:\s*Name)?|Pt\.?\s*Name|Name)\s*[:\-]?\s*([A-Za-z\s]+?)(?:,|\n|\r|Age|Sex|Gender|Date|\d|$)', line, re.IGNORECASE)
-            if m:
-                p_cand = m.group(1).strip()
-                if len(p_cand) > 1 and not p_cand.lower().startswith(('dr', 'rx', 'hospital', 'clinic', 'lic')):
-                    pat_name = p_cand
-
-        # 4. Patient Age
-        if not pat_age:
-            m = re.search(r'\b(?:Age|Yr|Yrs|Years?)\s*[:\-]?\s*(\d{1,3})\b', line, re.IGNORECASE)
-            if m:
-                pat_age = m.group(1).strip()
-
-        # 5. Doctor License / Registration Number
-        if not doc_lic:
-            m = re.search(r'\b(?:Lic(?:ense)?\.?\s*(?:No\.?)?|Reg(?:n|istration)?\.?\s*(?:No\.?)?|Doc(?:tor)?\s*ID)\s*[:\-]?\s*([A-Za-z0-9\-\/]+)', line, re.IGNORECASE)
-            if m:
-                doc_lic = m.group(1).strip()
-
-        # 6. Doctor Advice / Suggestions
-        if re.search(r'\b(?:Advice|Sug(?:gestion)?s?|Instructions?|Diet)\s*[:\-]', line, re.IGNORECASE):
-            adv_text = re.sub(r'^(?:Advice|Sug(?:gestion)?s?|Instructions?|Diet)\s*[:\-]\s*', '', line, flags=re.IGNORECASE).strip()
-            if adv_text:
-                advice.append(adv_text)
-
-        # 7. Diagnosed Conditions
-        if re.search(r'\b(?:Diagnosis|Dx|Condition|Impression)\s*[:\-]', line, re.IGNORECASE):
-            diag_text = re.sub(r'^(?:Diagnosis|Dx|Condition|Impression)\s*[:\-]\s*', '', line, flags=re.IGNORECASE).strip()
-            if diag_text:
-                diagnosis.append(diag_text)
-
-        # Skip headers from being treated as medications
-        if any(lower_line.startswith(p) for p in ('dr.', 'dr ', 'doctor', 'patient', 'pt.', 'pt ', 'hospital', 'clinic', 'age', 'sex', 'gender', 'reg', 'lic', 'date', 'advice', 'diagnosis', 'dx', 'impression', 'rx')):
-            continue
-
-        # 8. Medication Detection & Parsing
-        form_m = re.search(r'\b(Tab(?:let)?|Cap(?:sule)?|Syr(?:up)?|Inj(?:ection)?|Oint(?:ment)?|Drops?|Susp(?:ension)?|Cream|Gel|Inhaler|Lotion)\b', line, re.IGNORECASE)
-        form = form_m.group(1).capitalize() if form_m else ''
-
-        str_m = re.search(r'\b(\d+(?:\.\d+)?\s*(?:mg|gm|g|ml|mcg|iu|%))\b', line, re.IGNORECASE)
-        strength = str_m.group(1).strip() if str_m else ''
-
-        num_str_m = None
-        if not strength:
-            num_str_m = re.search(r'\b([A-Za-z]{3,})\s+(\d{2,4})\b', line)
-            if num_str_m:
-                strength = f"{num_str_m.group(2)}mg"
-
-        freq_m = re.search(r'\b(\d+\s*-\s*\d+\s*-\s*\d+|\d+\s*-\s*\d+|OD|BD|BID|TDS|TID|QID|Q4H|Q6H|HS|SOS|STAT|once daily|twice daily|thrice daily|daily)\b', line, re.IGNORECASE)
-        frequency = freq_m.group(1).replace(' ', '') if freq_m else ''
-
-        dur_m = re.search(r'(?:for|x)?\s*(\d+\s*(?:days?|weeks?|months?))\b', line, re.IGNORECASE)
-        duration = dur_m.group(1).strip() if dur_m else ''
-
-        timing_m = re.search(r'\b(after\s+food|before\s+food|empty\s+stomach|after\s+meals?|before\s+meals?|at\s+bedtime|with\s+water|after\s+lunch|before\s+lunch|after\s+dinner|before\s+dinner|after\s+breakfast|before\s+breakfast)\b', line, re.IGNORECASE)
-        timing = timing_m.group(1).strip() if timing_m else ''
-
-        is_med_line = bool(form or strength or frequency or (num_str_m is not None))
-        if not is_med_line and re.match(r'^\s*Rx\b', raw_line, re.IGNORECASE) and len(line.split()) >= 1:
-            is_med_line = True
-
-        if is_med_line:
-            # Clean name without stripping characters inside valid words
-            cleaned = line
-            tokens_to_remove = [
-                form_m.group(0) if form_m else '',
-                str_m.group(0) if str_m else '',
-                num_str_m.group(2) if num_str_m else '',
-                freq_m.group(0) if freq_m else '',
-                f'for {duration}' if duration else '',
-                f'x {duration}' if duration else '',
-                duration,
-                timing,
-                'Rx:', 'Rx'
-            ]
-            for tok in tokens_to_remove:
-                if tok:
-                    cleaned = re.sub(r'\b' + re.escape(tok) + r'\b', ' ', cleaned, flags=re.IGNORECASE)
-
-            # Strip whole-word boilerplate safely
-            cleaned = re.sub(r'\b(?:for|x|tab|capsule|tablet|syrup|inj|drops|suspension|rx)\b', ' ', cleaned, flags=re.IGNORECASE)
-            drug_name = re.sub(r'[^A-Za-z0-9\s\-]', ' ', cleaned)
-            drug_name = ' '.join(drug_name.split()).title()
-
-            if drug_name and len(drug_name) >= 2 and drug_name.lower() not in ('patient', 'doctor', 'hospital', 'clinic', 'prescription', 'tablets', 'capsules', 'none', 'null', 'medication'):
-                sched = parse_dosage_schedule(frequency) if parse_dosage_schedule else {}
-                sched_slots = sched.get('schedule_slots') or {'morning': False, 'afternoon': False, 'night': False}
-                sched_text = sched.get('schedule_text') or ''
-
-                # Contextual slot inference for natural language frequencies
-                if not any(sched_slots.values()):
-                    freq_or_time = f"{frequency} {timing}".lower()
-                    if any(w in freq_or_time for w in ("morning", "breakfast", "1-0-0")):
-                        sched_slots["morning"] = True
-                    if any(w in freq_or_time for w in ("afternoon", "lunch", "noon", "0-1-0")):
-                        sched_slots["afternoon"] = True
-                    if any(w in freq_or_time for w in ("night", "bedtime", "evening", "dinner", "0-0-1", "hs")):
-                        sched_slots["night"] = True
-                    if any(w in freq_or_time for w in ("twice daily", "bd", "bid", "1-0-1")):
-                        sched_slots["morning"] = True
-                        sched_slots["night"] = True
-                    if any(w in freq_or_time for w in ("three times", "thrice", "tds", "tid", "1-1-1")):
-                        sched_slots["morning"] = True
-                        sched_slots["afternoon"] = True
-                        sched_slots["night"] = True
-
-                dosage_parts = [p for p in [strength, frequency, f'for {duration}' if duration else '', timing] if p]
-                dosage_formatted = ', '.join(dosage_parts) if dosage_parts else (strength or 'As directed by physician')
-
-                if not sched_text:
-                    sched_text = frequency or dosage_formatted or ''
-
-                dosage_val = strength or dosage_formatted or ''
-
-                medicines.append({
-                    'id': f'med-{len(medicines)}',
-                    'name': drug_name,
-                    'drug_name': drug_name,
-                    'drug': drug_name,
-                    'dosage': dosage_val,
-                    'strength': strength or '',
-                    'form': form or '',
-                    'frequency': frequency or '',
-                    'duration': duration or '',
-                    'timing': timing or '',
-                    'dosage_formatted': dosage_formatted or '',
-                    'instructions': dosage_formatted or '',
-                    'schedule_text': sched_text or '',
-                    'schedule': sched_text or '',
-                    'schedule_slots': sched_slots
-                })
-
-    return {
-        'doctor_name': doc_name or "",
-        'hospital_name': hosp_name or "",
-        'patient_name': pat_name or "",
-        'patient_age': pat_age or "",
-        'patient_details': {
-            'name': pat_name or "",
-            'age': pat_age or "",
-            'sex': ""
-        },
-        'doctor_license_number': doc_lic or "",
-        'doctor_id': doc_lic or "",
-        'license_code': doc_lic or "",
-        'medicines': medicines,
-        'prescribed_medications': medicines,
-        'scanned_drugs': [m['name'] for m in medicines if m.get('name')],
-        'doctor_suggestions': advice,
-        'doctor_advice': advice,
-        'diseases_identified': diagnosis,
-        'raw_text': text or "",
-        'extracted_raw_text': text or "",
-        'llm_provider': "MediScan Local NLP"
-    }
 
 def _standardize_prescription_output(data: Dict[str, Any], raw_text: str, provider: str = "MediScan Local NLP") -> Dict[str, Any]:
     """
@@ -438,7 +240,6 @@ def parse_ocr_text(raw_input: Union[List[str], str, Image.Image, bytes]) -> Dict
     """
     Parses noisy OCR text or prescription image inputs using MediScan Local NLP.
     Extracts doctor, patient, and verified medication details into clean JSON.
-    Includes strict 120-second timeout and robust local deterministic Regex fallback.
     """
     text_payload = ""
     contents: List[Any] = []
@@ -470,55 +271,62 @@ def parse_ocr_text(raw_input: Union[List[str], str, Image.Image, bytes]) -> Dict
         text_payload = str(raw_input or "").strip()
         contents = [f"Raw OCR Text:\n{text_payload}"] if text_payload else []
 
-    logger.info("[MediScan Local NLP] Initializing clinical entity structuring...")
+    logger.info("[MediScan Local NLP] Extracting clinical entities...")
 
     if not text_payload and not contents:
         return _standardize_prescription_output({}, "", provider="MediScan Local NLP")
 
     logger.info(f"[MediScan Local NLP] Parsing tokens ({len(text_payload)} characters)...")
 
-    # Primary Attempt: Internal accelerated extraction with 120-second timeout
+    # Primary Attempt: Accelerated extraction with 120-second timeout
     try:
         client = get_genai_client()
-        if client and contents:
-            logger.info("[MediScan Local NLP] Processing tokens and syntactic dependencies...")
-
-            http_options = types.HttpOptions(
-                timeout=TIMEOUT_MS,
-                retry_options=types.HttpRetryOptions(attempts=2)
+        if not client or not contents:
+            logger.warning("[MediScan Local NLP] Clinical entity structuring engine unavailable.")
+            raise HTTPException(
+                status_code=503,
+                detail="Local NLP Engine Timeout. Please try scanning again."
             )
 
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                response_schema=PrescriptionData,
-                temperature=0.0,
-                http_options=http_options
+        logger.info("[MediScan Local NLP] Processing tokens and syntactic dependencies...")
+
+        http_options = types.HttpOptions(
+            timeout=TIMEOUT_MS,
+            retry_options=types.HttpRetryOptions(attempts=2)
+        )
+
+        config = types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            response_mime_type="application/json",
+            response_schema=PrescriptionData,
+            temperature=0.0,
+            http_options=http_options
+        )
+
+        response = client.models.generate_content(
+            model=_INTERNAL_MODEL,
+            contents=contents,
+            config=config
+        )
+
+        raw_response_text = response.text.strip() if (response and response.text) else ""
+        if not raw_response_text:
+            logger.warning("[MediScan Local NLP] Clinical entity structuring yielded no tokens.")
+            raise HTTPException(
+                status_code=503,
+                detail="Local NLP Engine Timeout. Please try scanning again."
             )
 
-            response = client.models.generate_content(
-                model=_INTERNAL_MODEL,
-                contents=contents,
-                config=config
-            )
+        cleaned_json = _clean_json_text(raw_response_text)
+        parsed_json = json.loads(cleaned_json)
+        logger.info("[spaCy Entity Extractor] Entity recognition and normalization complete.")
+        return _standardize_prescription_output(parsed_json, text_payload, provider="MediScan Local NLP")
 
-            raw_response_text = response.text.strip() if (response and response.text) else ""
-            if raw_response_text:
-                cleaned_json = _clean_json_text(raw_response_text)
-                parsed_json = json.loads(cleaned_json)
-                if parsed_json.get("medicines") and len(parsed_json["medicines"]) > 0:
-                    logger.info("[spaCy Entity Extractor] Entity recognition and normalization complete.")
-                    return _standardize_prescription_output(parsed_json, text_payload, provider="MediScan Local NLP")
-                else:
-                    logger.info("[MediScan Local NLP] Primary entity pass returned empty list. Engaging local regex extractor...")
-
-    except Exception:
-        # Silently catch network drops, quotas, or timeouts without printing external provider errors
-        pass
-
-    # Safety Net: Local Deterministic Regex Parser
-    logger.info("[MediScan Local NLP] Pipeline optimized for local execution...")
-    logger.info("[spaCy Entity Extractor] Running deterministic rule-based entity parsing...")
-    local_data = _extract_with_local_regex(text_payload)
-    logger.info("[MediScan Local NLP] Local extraction successfully matched clinical entities.")
-    return _standardize_prescription_output(local_data, text_payload, provider="MediScan Local NLP")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(f"[MediScan Local NLP] Clinical entity structuring halted: {type(exc).__name__}")
+        raise HTTPException(
+            status_code=503,
+            detail="Local NLP Engine Timeout. Please try scanning again."
+        )
