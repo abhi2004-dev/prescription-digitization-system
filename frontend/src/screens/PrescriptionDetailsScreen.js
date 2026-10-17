@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Platform, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 import { API_BASE_URL } from '../constants/config';
 import { useAuth } from '../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { speakMedication, speakFullPrescription, stopSpeech, buildMedicationSpeechText, TTS_LANGUAGES } from '../services/ttsService';
-import { scheduleMedicationAlarms } from '../services/notificationService';
+import { scheduleMedicationAlarms, parseDurationDays, calculateEndDate, formatReadableDate } from '../services/notificationService';
 import { exportPrescriptionPDF } from '../services/pdfExportService';
 import { addMedicationToProfile as serviceAddMedication } from '../services/profileService';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -26,10 +26,15 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [schedulingAlarms, setSchedulingAlarms] = useState(false);
   const [alarmsScheduled, setAlarmsScheduled] = useState(false);
-  const [alarmModalVisible, setAlarmModalVisible] = useState(false);
   const [alarmConfigs, setAlarmConfigs] = useState([]);
   const [savingAlarms, setSavingAlarms] = useState(false);
-  const [activePicker, setActivePicker] = useState(null); // null | { medIdx: number, slotIdx: number, date: Date }
+  const [activePicker, setActivePicker] = useState(null); // null | { slotIdx: number, date: Date }
+
+  // Per-Medication Bottom Sheet Modal State
+  const [medSheetVisible, setMedSheetVisible] = useState(false);
+  const [selectedMedIndex, setSelectedMedIndex] = useState(null);
+  const [editingMedConfig, setEditingMedConfig] = useState(null);
+  const [editingDurationDays, setEditingDurationDays] = useState('5');
 
   // Stop any ongoing speech when navigating away
   useEffect(() => {
@@ -92,6 +97,93 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
       return { bg: '#e0f2fe', text: '#0369a1', border: '#bae6fd', icon: '#0284c7', badge: '#0284c7', label: 'MINOR RISK' };
     }
     return { bg: '#f3e8ff', text: '#6b21a8', border: '#e9d5ff', icon: '#7e22ce', badge: '#7e22ce', label: 'CAUTION' };
+  };
+
+  const getCleanScheduleText = (med) => {
+    if (!med) return null;
+
+    const raw = med.schedule_text;
+    if (raw && typeof raw === 'string') {
+      const trimmed = raw.trim();
+      const hasDosageArtifacts = trimmed.includes('•') ||
+        (med.strength && trimmed.toLowerCase().includes(String(med.strength).toLowerCase())) ||
+        (med.dosage && trimmed.toLowerCase().includes(String(med.dosage).toLowerCase())) ||
+        (med.form && trimmed.toLowerCase().includes(String(med.form).toLowerCase()));
+
+      if (!hasDosageArtifacts && trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+
+    // If med.schedule_text is null (or contains concatenated strength & form), dynamically evaluate med.schedule_slots
+    const slots = med.schedule_slots;
+    if (slots && typeof slots === 'object') {
+      const active = [];
+      if (slots.morning) active.push("Morning");
+      if (slots.afternoon) active.push("Afternoon");
+      if (slots.night) active.push("Night");
+
+      if (active.length === 3) return "Morning, Afternoon & Night";
+      if (active.length === 2) return `${active[0]} & ${active[1]}`;
+      if (active.length === 1) return active[0];
+    }
+
+    // Fallback: evaluate from frequency pattern if like "1-0-1"
+    const freq = med.frequency;
+    if (freq && typeof freq === 'string') {
+      const parts = freq.split('-').map(s => s.trim());
+      if (parts.length === 3) {
+        const morning = parts[0] !== '0' && parts[0] !== '';
+        const afternoon = parts[1] !== '0' && parts[1] !== '';
+        const night = parts[2] !== '0' && parts[2] !== '';
+        const active = [];
+        if (morning) active.push("Morning");
+        if (afternoon) active.push("Afternoon");
+        if (night) active.push("Night");
+
+        if (active.length === 3) return "Morning, Afternoon & Night";
+        if (active.length === 2) return `${active[0]} & ${active[1]}`;
+        if (active.length === 1) return active[0];
+      }
+    }
+
+    return null;
+  };
+
+  const getCleanTimingOrInstruction = (med) => {
+    if (!med) return null;
+    if (med.timing && typeof med.timing === 'string' && med.timing.trim().length > 0) {
+      return med.timing.trim();
+    }
+    const instr = med.instructions || med.dosage_formatted || med.details;
+    if (!instr || typeof instr !== 'string') return null;
+
+    if (instr.includes('•')) {
+      const parts = instr.split('•').map(p => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        const lower = part.toLowerCase();
+        const isStrength = med.strength && lower === String(med.strength).toLowerCase();
+        const isForm = med.form && lower === String(med.form).toLowerCase();
+        const isFreq = med.frequency && lower === String(med.frequency).toLowerCase();
+        const isDuration = med.duration && lower === String(med.duration).toLowerCase();
+        const isGeneric = lower === 'as directed by physician' || lower === 'as directed';
+        
+        if (!isStrength && !isForm && !isFreq && !isDuration && !isGeneric) {
+          return part;
+        }
+      }
+      return null;
+    }
+
+    const trimmed = instr.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower !== 'as directed by physician' && lower !== 'as directed' && trimmed.length > 0) {
+      if ((!med.strength || !lower.includes(String(med.strength).toLowerCase())) &&
+          (!med.form || lower !== String(med.form).toLowerCase())) {
+        return trimmed;
+      }
+    }
+    return null;
   };
 
   const handleCompareWithProfile = async () => {
@@ -213,7 +305,7 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
   };
 
   // -------------------------------------------------------------
-  // Step 3 Action: Visual Alarm Management & Persistence (Action 1 & 2)
+  // Step 3 Action: Context-Aware Defaults & Per-Medication Alarm Logic
   // -------------------------------------------------------------
   const loadOrInitAlarms = async () => {
     if (!validMedicines || validMedicines.length === 0) return;
@@ -226,31 +318,51 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
         }
       });
 
+      let hasActiveSavedAlarms = false;
       const initial = validMedicines.map((med) => {
         const medName = (med.drug_name || med.name || med.drug || '').trim();
         const existing = savedMap.get(medName.toLowerCase());
+        const parsedDays = parseDurationDays(med.duration);
+
         if (existing && Array.isArray(existing.alarms) && existing.alarms.length > 0) {
+          const hasEnabledSlot = existing.alarms.some((a) => a.enabled);
+          if (hasEnabledSlot) hasActiveSavedAlarms = true;
           return {
             medication: medName,
             strength: med.strength || existing.strength || '',
+            duration: existing.duration || med.duration || `${parsedDays} days`,
+            durationDays: existing.durationDays || parsedDays,
             alarms: existing.alarms,
           };
         }
-        return buildInitialMedicationAlarms(med);
+
+        // Context-Aware Defaults:
+        // If isOwner is true -> auto-enable alarms for extracted slots using user default times.
+        // If isOwner is false -> leave them off (enabled: false)
+        const config = buildInitialMedicationAlarms(med, isOwner);
+        return config;
       });
 
       setAlarmConfigs(initial);
 
-      const hasAnySaved = validMedicines.some((med) => {
-        const medName = (med.drug_name || med.name || med.drug || '').trim().toLowerCase();
-        return savedMap.has(medName);
-      });
-      if (hasAnySaved) {
+      if (isOwner) {
+        // Auto-enable & auto-schedule for verified prescription owner
         setAlarmsScheduled(true);
+        try {
+          await scheduleMedicationAlarms(initial, patientName || user?.name || '');
+          await saveUserAlarms(initial);
+        } catch (autoErr) {
+          console.warn("[Alarm] Auto-schedule for owner error:", autoErr);
+        }
+      } else {
+        // For non-owner, leave off until user explicitly opts in
+        setAlarmsScheduled(hasActiveSavedAlarms);
       }
     } catch (err) {
       console.warn("Failed to load saved alarms:", err);
-      setAlarmConfigs(validMedicines.map(buildInitialMedicationAlarms));
+      const fallback = validMedicines.map((m) => buildInitialMedicationAlarms(m, isOwner));
+      setAlarmConfigs(fallback);
+      setAlarmsScheduled(isOwner);
     }
   };
 
@@ -258,68 +370,156 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
     loadOrInitAlarms();
   }, [data]);
 
-  const handleScheduleAlarms = async () => {
+  // Non-owner explicit opt-in: "Enable Reminders for [Name]"
+  const handleEnableNonOwnerReminders = async () => {
     if (!validMedicines || validMedicines.length === 0) {
-      Alert.alert("No Medications", "No medications detected on this prescription to schedule alarms for.");
+      Alert.alert("No Medications", "No medications detected on this prescription to schedule reminders for.");
       return;
     }
-    await loadOrInitAlarms();
-    setAlarmModalVisible(true);
+
+    try {
+      setSavingAlarms(true);
+      // Pre-fill all medications with extracted slots enabled, user default times, and parsed duration
+      const prefilledConfigs = validMedicines.map((med) => buildInitialMedicationAlarms(med, true));
+      setAlarmConfigs(prefilledConfigs);
+
+      await saveUserAlarms(prefilledConfigs);
+      await scheduleMedicationAlarms(
+        prefilledConfigs,
+        patientName ? patientName.trim() : 'Patient'
+      );
+
+      setAlarmsScheduled(true);
+      Alert.alert(
+        `Reminders Enabled for ${patientName ? patientName.trim() : 'Patient'} ⏰`,
+        `Pre-filled and activated daily reminders (Morning: 8:00 AM, Afternoon: 1:00 PM, Night: 8:00 PM) for ${validMedicines.length} medication(s).\n\nYou can tap the alarm badge on any medication card below to customize individual times or duration.`,
+        [{ text: "OK" }]
+      );
+    } catch (err) {
+      console.error("Failed to enable reminders for non-owner:", err);
+      Alert.alert("Alarms Setup", "Could not activate reminders at this time.");
+    } finally {
+      setSavingAlarms(false);
+    }
   };
 
-  const handleToggleSlot = (medIndex, slotIndex) => {
-    setAlarmConfigs((prev) => {
+  // Open Bottom Sheet for a specific medication card
+  const handleOpenMedAlarmSheet = (med, index) => {
+    const medName = (med.drug_name || med.name || med.drug || 'Medication').trim();
+    let config = alarmConfigs[index];
+    if (!config || (config.medication || '').toLowerCase() !== medName.toLowerCase()) {
+      config = alarmConfigs.find((c) => (c.medication || '').toLowerCase() === medName.toLowerCase());
+    }
+    if (!config) {
+      config = buildInitialMedicationAlarms(med, isOwner);
+    }
+
+    const copy = JSON.parse(JSON.stringify(config));
+    const parsedDays = copy.durationDays || parseDurationDays(med.duration);
+    copy.durationDays = parsedDays;
+    copy.duration = copy.duration || med.duration || `${parsedDays} days`;
+
+    setSelectedMedIndex(index);
+    setEditingMedConfig(copy);
+    setEditingDurationDays(String(parsedDays));
+    setMedSheetVisible(true);
+  };
+
+  const handleToggleSheetSlot = (slotIdx) => {
+    if (!editingMedConfig || !editingMedConfig.alarms) return;
+    setEditingMedConfig((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
-      if (next[medIndex] && next[medIndex].alarms && next[medIndex].alarms[slotIndex]) {
-        next[medIndex].alarms[slotIndex].enabled = !next[medIndex].alarms[slotIndex].enabled;
+      if (next.alarms && next.alarms[slotIdx]) {
+        next.alarms[slotIdx].enabled = !next.alarms[slotIdx].enabled;
       }
       return next;
     });
   };
 
-  const handleUpdateTime = (medIndex, slotIndex, newTime) => {
-    setAlarmConfigs((prev) => {
+  const handleUpdateSheetSlotTime = (slotIdx, newTime) => {
+    if (!editingMedConfig || !editingMedConfig.alarms) return;
+    setEditingMedConfig((prev) => {
       const next = JSON.parse(JSON.stringify(prev));
-      if (next[medIndex] && next[medIndex].alarms && next[medIndex].alarms[slotIndex]) {
-        next[medIndex].alarms[slotIndex].time = newTime;
+      if (next.alarms && next.alarms[slotIdx]) {
+        next.alarms[slotIdx].time = newTime;
       }
       return next;
     });
   };
 
-  const openTimePicker = (medIndex, slotIndex, currentTimeStr) => {
+  const openSheetTimePicker = (slotIdx, currentTimeStr) => {
     setActivePicker({
-      medIdx: medIndex,
-      slotIdx: slotIndex,
+      slotIdx,
       date: parseTimeStringToDate(currentTimeStr),
     });
   };
 
-  const handleSaveConfiguredAlarms = async () => {
+  const handleSaveMedAlarm = async () => {
+    if (!editingMedConfig) return;
     try {
       setSavingAlarms(true);
-      const res = await saveUserAlarms(alarmConfigs);
-      if (res.success) {
-        setAlarmsScheduled(true);
-        setAlarmModalVisible(false);
-        const activeCount = alarmConfigs.reduce(
-          (total, m) => total + (m.alarms ? m.alarms.filter((a) => a.enabled).length : 0),
-          0
-        );
-        Alert.alert(
-          "Medication Alarms Configured ⏰",
-          `Configured ${activeCount} reminder time(s) for ${alarmConfigs.length} medication(s).\n\nYour customized schedule is saved in local storage and active in your Patient Profile.`,
-          [{ text: "Great, Thank You!" }]
-        );
+      const days = parseInt(editingDurationDays, 10);
+      const validDays = !isNaN(days) && days > 0 ? days : 5;
+      const computedEndDate = calculateEndDate(new Date(), validDays);
+
+      const updatedConfig = {
+        ...editingMedConfig,
+        durationDays: validDays,
+        duration: `${validDays} days`,
+        endDate: computedEndDate.toISOString(),
+      };
+
+      const nextConfigs = [...alarmConfigs];
+      if (selectedMedIndex !== null && nextConfigs[selectedMedIndex]) {
+        nextConfigs[selectedMedIndex] = updatedConfig;
       } else {
-        Alert.alert("Alarms Setup", "Could not save alarm configurations.");
+        const foundIdx = nextConfigs.findIndex(
+          (c) => (c.medication || '').toLowerCase() === (updatedConfig.medication || '').toLowerCase()
+        );
+        if (foundIdx >= 0) {
+          nextConfigs[foundIdx] = updatedConfig;
+        } else {
+          nextConfigs.push(updatedConfig);
+        }
       }
+      setAlarmConfigs(nextConfigs);
+
+      // Persist to storage
+      await saveUserAlarms(nextConfigs);
+
+      // Schedule updated notifications via notificationService
+      await scheduleMedicationAlarms(
+        nextConfigs,
+        patientName || (isOwner ? (user?.name || '') : 'Patient')
+      );
+
+      const activeSlots = updatedConfig.alarms.filter((a) => a.enabled);
+      setAlarmsScheduled(nextConfigs.some((c) => (c.alarms || []).some((a) => a.enabled)));
+      setMedSheetVisible(false);
+
+      Alert.alert(
+        "Medication Reminder Saved ⏰",
+        activeSlots.length > 0
+          ? `Alarms scheduled for ${updatedConfig.medication} (${activeSlots.map((s) => s.time).join(', ')}).\n\nWill automatically stop firing after ${validDays} days on ${formatReadableDate(computedEndDate)}.`
+          : `All reminder alarms for ${updatedConfig.medication} have been turned off.`,
+        [{ text: "Done" }]
+      );
     } catch (err) {
-      console.error("Error saving configured alarms:", err);
-      Alert.alert("Alarms Error", err.message || "Failed to save medication reminders.");
+      console.error("Failed to save med alarm:", err);
+      Alert.alert("Save Error", "Could not save alarm schedule.");
     } finally {
       setSavingAlarms(false);
     }
+  };
+
+  // Top utility toolbar "Manage Alarms" action
+  const handleScheduleAlarms = () => {
+    if (!validMedicines || validMedicines.length === 0) {
+      Alert.alert("No Medications", "No medications detected on this prescription to schedule alarms for.");
+      return;
+    }
+    // Open the first medication's bottom sheet
+    handleOpenMedAlarmSheet(validMedicines[0], 0);
   };
 
   // -------------------------------------------------------------
@@ -568,6 +768,32 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
               </View>
             </View>
 
+            {/* Context-Aware Defaults: Pre-fills and enables alarms for non-owner patient */}
+            <TouchableOpacity
+              style={[styles.enableRemindersButton, alarmsScheduled && styles.enableRemindersButtonSuccess]}
+              onPress={handleEnableNonOwnerReminders}
+              disabled={savingAlarms}
+              activeOpacity={0.85}
+            >
+              {savingAlarms ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <>
+                  <MaterialIcons
+                    name={alarmsScheduled ? "alarm-on" : "alarm-add"}
+                    size={18}
+                    color="#ffffff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text style={styles.enableRemindersButtonText}>
+                    {alarmsScheduled
+                      ? `Reminders Active for ${patientName ? patientName.trim() : 'Patient'}`
+                      : `Enable Reminders for ${patientName ? patientName.trim() : 'Patient'}`}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={styles.compareButton}
               onPress={handleCompareWithProfile}
@@ -696,13 +922,22 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
             const drugName = med.drug_name || med.name || med.drug || 'Medication';
             const dosage = med.strength || med.dosage || 'Not specified';
             const form = med.form || 'Oral';
-            const frequency = med.frequency || 'As directed';
+            const frequency = med.frequency || '';
             const duration = med.duration || '';
             const timing = med.timing || '';
-            const scheduleText = med.schedule_text || med.schedule;
+            const scheduleText = getCleanScheduleText(med);
             const scheduleSlots = med.schedule_slots;
-            const instructions = med.instructions || med.dosage_formatted || med.details;
+            const instructions = med.instructions || med.dosage_formatted || med.details || '';
             const isSpeakingThis = speakingIndex === index;
+
+            // Determine timing or instructions to display (e.g. "after food")
+            const timingDisplay = getCleanTimingOrInstruction(med);
+
+            // Per-medication alarm config and active status
+            const thisMedConfig = alarmConfigs[index] || alarmConfigs.find(c => (c.medication || '').toLowerCase() === drugName.toLowerCase());
+            const activeAlarmSlots = (thisMedConfig?.alarms || []).filter(a => a.enabled);
+            const hasActiveAlarmsForThisMed = activeAlarmSlots.length > 0;
+            const medDurationDays = thisMedConfig?.durationDays || parseDurationDays(duration);
 
             return (
               <View key={index} style={[styles.medicineCard, isSpeakingThis && styles.medicineCardSpeaking]}>
@@ -740,35 +975,96 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
                   </TouchableOpacity>
                 </View>
 
+                {/* Per-Medication Alarm Badge - Tapping opens Bottom Sheet */}
+                <TouchableOpacity
+                  style={[
+                    styles.medAlarmCardBadge,
+                    hasActiveAlarmsForThisMed ? styles.medAlarmCardBadgeActive : styles.medAlarmCardBadgeInactive
+                  ]}
+                  onPress={() => handleOpenMedAlarmSheet(med, index)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.medAlarmBadgeLeft}>
+                    <MaterialIcons
+                      name={hasActiveAlarmsForThisMed ? "alarm-on" : "alarm-add"}
+                      size={16}
+                      color={hasActiveAlarmsForThisMed ? "#047857" : "#b45309"}
+                    />
+                    <Text
+                      style={[
+                        styles.medAlarmCardBadgeTitle,
+                        hasActiveAlarmsForThisMed ? styles.medAlarmBadgeTextActive : styles.medAlarmBadgeTextInactive
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {hasActiveAlarmsForThisMed
+                        ? `Alarms (${activeAlarmSlots.length}): ${activeAlarmSlots.map(s => `${s.label} (${s.time})`).join(' • ')}`
+                        : "Set Custom Alarms & Duration"}
+                    </Text>
+                  </View>
+                  <View style={styles.medAlarmBadgeRight}>
+                    <Text style={[styles.medAlarmBadgeAction, hasActiveAlarmsForThisMed && styles.medAlarmBadgeActionActive]}>
+                      {hasActiveAlarmsForThisMed ? "Edit" : "Set"}
+                    </Text>
+                    <MaterialIcons
+                      name="chevron-right"
+                      size={16}
+                      color={hasActiveAlarmsForThisMed ? "#047857" : "#b45309"}
+                    />
+                  </View>
+                </TouchableOpacity>
+
                 {/* Dedicated Schedule Badge & Time Slots */}
                 {(scheduleText || scheduleSlots) ? (
                   <View style={styles.scheduleBadgeContainer}>
                     {scheduleText ? (
-                      <View style={styles.scheduleMainPill}>
+                      <TouchableOpacity
+                        style={styles.scheduleMainPill}
+                        onPress={() => handleOpenMedAlarmSheet(med, index)}
+                        activeOpacity={0.8}
+                      >
                         <MaterialIcons name="schedule" size={14} color="#3730a3" />
                         <Text style={styles.scheduleMainText}>{scheduleText}</Text>
-                      </View>
+                      </TouchableOpacity>
                     ) : null}
 
                     {scheduleSlots && (scheduleSlots.morning || scheduleSlots.afternoon || scheduleSlots.night) ? (
                       <View style={styles.slotChipsRow}>
                         {scheduleSlots.morning ? (
-                          <View style={[styles.timeSlotChip, styles.slotMorning]}>
+                          <TouchableOpacity
+                            style={[styles.timeSlotChip, styles.slotMorning]}
+                            onPress={() => handleOpenMedAlarmSheet(med, index)}
+                            activeOpacity={0.8}
+                          >
                             <Text style={styles.slotEmoji}>🌅</Text>
-                            <Text style={[styles.timeSlotText, styles.slotMorningText]}>Morning (8:00 AM)</Text>
-                          </View>
+                            <Text style={[styles.timeSlotText, styles.slotMorningText]}>
+                              Morning ({thisMedConfig?.alarms?.find(a => a.slot === 'morning')?.time || '8:00 AM'})
+                            </Text>
+                          </TouchableOpacity>
                         ) : null}
                         {scheduleSlots.afternoon ? (
-                          <View style={[styles.timeSlotChip, styles.slotAfternoon]}>
+                          <TouchableOpacity
+                            style={[styles.timeSlotChip, styles.slotAfternoon]}
+                            onPress={() => handleOpenMedAlarmSheet(med, index)}
+                            activeOpacity={0.8}
+                          >
                             <Text style={styles.slotEmoji}>☀️</Text>
-                            <Text style={[styles.timeSlotText, styles.slotAfternoonText]}>Afternoon (1:00 PM)</Text>
-                          </View>
+                            <Text style={[styles.timeSlotText, styles.slotAfternoonText]}>
+                              Afternoon ({thisMedConfig?.alarms?.find(a => a.slot === 'afternoon')?.time || '1:00 PM'})
+                            </Text>
+                          </TouchableOpacity>
                         ) : null}
                         {scheduleSlots.night ? (
-                          <View style={[styles.timeSlotChip, styles.slotNight]}>
+                          <TouchableOpacity
+                            style={[styles.timeSlotChip, styles.slotNight]}
+                            onPress={() => handleOpenMedAlarmSheet(med, index)}
+                            activeOpacity={0.8}
+                          >
                             <Text style={styles.slotEmoji}>🌙</Text>
-                            <Text style={[styles.timeSlotText, styles.slotNightText]}>Night (8:00 PM)</Text>
-                          </View>
+                            <Text style={[styles.timeSlotText, styles.slotNightText]}>
+                              Night ({thisMedConfig?.alarms?.find(a => a.slot === 'night')?.time || '8:00 PM'})
+                            </Text>
+                          </TouchableOpacity>
                         ) : null}
                       </View>
                     ) : null}
@@ -787,22 +1083,36 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
                   </View>
                   <View style={styles.dosageItem}>
                     <Text style={styles.dosageLabel}>FREQUENCY</Text>
-                    <Text style={styles.dosageValue}>{frequency}</Text>
+                    <Text style={styles.dosageValue}>{frequency || 'As directed'}</Text>
                   </View>
                 </View>
 
-                {(duration || timing) ? (
+                {/* Bottom Chip Row for Frequency, Timing / Instructions, and Duration */}
+                {(frequency || timingDisplay || duration) ? (
                   <View style={styles.extraMedsInfoRow}>
+                    {frequency ? (
+                      <View style={[styles.miniChip, { backgroundColor: '#fef3c7' }]}>
+                        <Text style={[styles.miniChipText, { color: '#92400e' }]}>{frequency}</Text>
+                      </View>
+                    ) : null}
+                    {timingDisplay ? (
+                      <View style={[styles.miniChip, { backgroundColor: '#f3e8ff' }]}>
+                        <Text style={[styles.miniChipText, { color: '#6b21a8' }]}>{timingDisplay}</Text>
+                      </View>
+                    ) : null}
                     {duration ? (
                       <View style={[styles.miniChip, { backgroundColor: '#dcfce7' }]}>
-                        <Text style={[styles.miniChipText, { color: '#166534' }]}>Duration: {duration}</Text>
+                        <Text style={[styles.miniChipText, { color: '#166534' }]}>
+                          {duration.toLowerCase().startsWith('duration') ? duration : `Duration: ${duration}`}
+                        </Text>
                       </View>
-                    ) : null}
-                    {timing ? (
-                      <View style={[styles.miniChip, { backgroundColor: '#f3e8ff' }]}>
-                        <Text style={[styles.miniChipText, { color: '#6b21a8' }]}>Timing: {timing}</Text>
+                    ) : (
+                      <View style={[styles.miniChip, { backgroundColor: '#dcfce7' }]}>
+                        <Text style={[styles.miniChipText, { color: '#166534' }]}>
+                          {`Duration: ${medDurationDays} days`}
+                        </Text>
                       </View>
-                    ) : null}
+                    )}
                   </View>
                 ) : null}
               </View>
@@ -1033,140 +1343,226 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
       {/* ------------------------------------------------------------- */}
       {/* Action 1 & 2: MANAGE ALARMS MODAL (Auto-set, Edit & Persist)  */}
       {/* ------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------- */}
+      {/* PER-MEDICATION BOTTOM SHEET MODAL (Granular Times & Duration) */}
+      {/* ------------------------------------------------------------- */}
       <Modal
-        visible={alarmModalVisible}
+        visible={medSheetVisible}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setAlarmModalVisible(false)}
+        onRequestClose={() => setMedSheetVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderLeft}>
-                <View style={styles.modalAlarmIconBadge}>
-                  <MaterialIcons name="alarm" size={24} color={COLORS.primary} />
+        <View style={styles.bottomSheetOverlay}>
+          <View style={styles.bottomSheetContainer}>
+            {/* Top Draggable Handle */}
+            <View style={styles.dragHandle} />
+
+            {/* Bottom Sheet Header */}
+            <View style={styles.bottomSheetHeader}>
+              <View style={styles.sheetMedTitleBox}>
+                <View style={styles.sheetTitleRow}>
+                  <MaterialIcons name="alarm" size={22} color={COLORS.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.sheetMedTitle} numberOfLines={1}>
+                    {editingMedConfig?.medication || 'Medication Reminders'}
+                  </Text>
                 </View>
-                <View>
-                  <Text style={styles.modalTitle}>Manage Medication Alarms</Text>
-                  <Text style={styles.modalSubtitle}>Auto-set & edit reminder schedules</Text>
-                </View>
+                <Text style={styles.sheetMedSub}>
+                  {editingMedConfig?.strength ? `${editingMedConfig.strength} • ` : ''}Configure custom times & duration
+                </Text>
               </View>
               <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setAlarmModalVisible(false)}
+                style={styles.sheetCloseBtn}
+                onPress={() => setMedSheetVisible(false)}
               >
                 <MaterialIcons name="close" size={22} color={COLORS.onSurfaceVariant} />
               </TouchableOpacity>
             </View>
 
-            {/* Modal Body */}
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalDescription}>
-                Times auto-populated from clinical schedule. Tap any time to adjust.
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.sheetScrollView}>
+              {/* Daily Dosage Slot Times */}
+              <Text style={styles.sheetSectionLabel}>DAILY DOSAGE SLOTS & CUSTOM TIMES</Text>
+              <Text style={styles.sheetSectionSub}>
+                Enable slots and tap any time to customize when you take this medicine.
               </Text>
 
-              {alarmConfigs.length > 0 ? (
-                alarmConfigs.map((medConfig, medIdx) => (
-                  <View key={`alarm-med-${medIdx}`} style={styles.medAlarmCard}>
-                    <View style={styles.medAlarmCardHeader}>
-                      <MaterialIcons name="medication" size={18} color={COLORS.primary} />
-                      <Text style={styles.medAlarmCardTitle}>
-                        {medConfig.medication}
-                        {medConfig.strength ? ` (${medConfig.strength})` : ''}
+              <View style={styles.sheetSlotsContainer}>
+                {(editingMedConfig?.alarms || []).map((slot, slotIdx) => (
+                  <View
+                    key={`sheet-slot-${slot.slot}`}
+                    style={[
+                      styles.sheetSlotRow,
+                      slot.enabled ? styles.sheetSlotRowActive : styles.sheetSlotRowInactive
+                    ]}
+                  >
+                    <TouchableOpacity
+                      style={styles.sheetSlotLeft}
+                      onPress={() => handleToggleSheetSlot(slotIdx)}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons
+                        name={slot.enabled ? "check-box" : "check-box-outline-blank"}
+                        size={22}
+                        color={slot.enabled ? COLORS.primary : COLORS.outline}
+                      />
+                      <Text style={styles.sheetSlotEmoji}>{slot.emoji}</Text>
+                      <View style={styles.sheetSlotTextCol}>
+                        <Text style={[styles.sheetSlotLabel, slot.enabled && styles.sheetSlotLabelActive]}>
+                          {slot.label} Dose
+                        </Text>
+                        <Text style={styles.sheetSlotSubtext}>
+                          {slot.slot === 'morning' ? 'Default: 8:00 AM' : slot.slot === 'afternoon' ? 'Default: 1:00 PM' : 'Default: 8:00 PM'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetTimeBtn,
+                        !slot.enabled && styles.sheetTimeBtnDisabled
+                      ]}
+                      onPress={() => openSheetTimePicker(slotIdx, slot.time)}
+                      disabled={!slot.enabled}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialIcons
+                        name="access-time"
+                        size={15}
+                        color={slot.enabled ? COLORS.primary : COLORS.outline}
+                      />
+                      <Text
+                        style={[
+                          styles.sheetTimeBtnText,
+                          !slot.enabled && styles.sheetTimeBtnTextDisabled
+                        ]}
+                      >
+                        {slot.time || 'Set Time'}
+                      </Text>
+                      <MaterialIcons
+                        name="arrow-drop-down"
+                        size={18}
+                        color={slot.enabled ? COLORS.primary : COLORS.outline}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+
+              {/* Treatment Duration Section */}
+              <View style={styles.sheetDurationContainer}>
+                <View style={styles.sheetDurationHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <MaterialIcons name="date-range" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+                    <Text style={styles.sheetDurationTitle}>Treatment Duration (Days)</Text>
+                  </View>
+                  <Text style={styles.sheetDurationBadge}>
+                    {editingDurationDays ? `${editingDurationDays} Days` : 'Not set'}
+                  </Text>
+                </View>
+
+                <Text style={styles.sheetDurationDescription}>
+                  {editingMedConfig?.duration
+                    ? `Pre-filled from doctor's Rx: "${editingMedConfig.duration}". Adjust if needed.`
+                    : 'Specify how many days this medication should be taken.'}
+                </Text>
+
+                {/* Duration Stepper & Text Input */}
+                <View style={styles.durationInputRow}>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => {
+                      const cur = parseInt(editingDurationDays, 10) || 5;
+                      if (cur > 1) setEditingDurationDays(String(cur - 1));
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="remove" size={20} color={COLORS.onSurface} />
+                  </TouchableOpacity>
+
+                  <TextInput
+                    style={styles.durationInput}
+                    value={editingDurationDays}
+                    onChangeText={(val) => {
+                      const filtered = val.replace(/[^0-9]/g, '');
+                      setEditingDurationDays(filtered);
+                    }}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    placeholder="5"
+                    placeholderTextColor={COLORS.outline}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => {
+                      const cur = parseInt(editingDurationDays, 10) || 0;
+                      setEditingDurationDays(String(cur + 1));
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="add" size={20} color={COLORS.onSurface} />
+                  </TouchableOpacity>
+                  <Text style={styles.durationInputUnit}>days</Text>
+                </View>
+
+                {/* Quick Presets */}
+                <View style={styles.durationPresetRow}>
+                  {['3', '5', '7', '10', '14', '30'].map((d) => {
+                    const isSelected = editingDurationDays === d;
+                    return (
+                      <TouchableOpacity
+                        key={`preset-${d}`}
+                        style={[styles.presetChip, isSelected && styles.presetChipActive]}
+                        onPress={() => setEditingDurationDays(d)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.presetChipText, isSelected && styles.presetChipTextActive]}>
+                          {d}d
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Calculated End Date Preview */}
+                {(() => {
+                  const daysNum = parseInt(editingDurationDays, 10) || 5;
+                  const calculatedEndDate = calculateEndDate(new Date(), daysNum);
+                  return (
+                    <View style={styles.endDateNoteBox}>
+                      <MaterialIcons name="event-available" size={16} color="#1d4ed8" />
+                      <Text style={styles.endDateNoteText}>
+                        Alarms automatically stop after {daysNum} day{daysNum > 1 ? 's' : ''} on{' '}
+                        <Text style={{ fontWeight: '700' }}>{formatReadableDate(calculatedEndDate)}</Text>.
                       </Text>
                     </View>
-
-                    <View style={styles.slotsContainer}>
-                      {medConfig.alarms.map((slot, slotIdx) => (
-                        <View
-                          key={`slot-${slot.slot}`}
-                          style={[
-                            styles.slotRow,
-                            slot.enabled ? styles.slotRowActive : styles.slotRowInactive,
-                          ]}
-                        >
-                          <TouchableOpacity
-                            style={styles.slotToggleTouch}
-                            onPress={() => handleToggleSlot(medIdx, slotIdx)}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons
-                              name={slot.enabled ? "check-box" : "check-box-outline-blank"}
-                              size={22}
-                              color={slot.enabled ? COLORS.primary : COLORS.outline}
-                            />
-                            <Text style={styles.slotEmoji}>{slot.emoji}</Text>
-                            <View style={styles.slotLabelCol}>
-                              <Text style={[styles.slotLabel, slot.enabled && styles.slotLabelActive]}>
-                                {slot.label}
-                              </Text>
-                              <Text style={styles.slotSubtext}>
-                                {slot.slot === 'morning' ? 'Default: 8:00 AM' : slot.slot === 'afternoon' ? 'Default: 1:00 PM' : 'Default: 8:00 PM'}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[
-                              styles.timePickerButton,
-                              !slot.enabled && styles.timePickerButtonDisabled,
-                            ]}
-                            onPress={() => openTimePicker(medIdx, slotIdx, slot.time)}
-                            disabled={!slot.enabled}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons
-                              name="access-time"
-                              size={15}
-                              color={slot.enabled ? COLORS.primary : COLORS.outline}
-                            />
-                            <Text
-                              style={[
-                                styles.timePickerText,
-                                !slot.enabled && styles.timePickerTextDisabled,
-                              ]}
-                            >
-                              {slot.time || 'Set Time'}
-                            </Text>
-                            <MaterialIcons
-                              name="arrow-drop-down"
-                              size={18}
-                              color={slot.enabled ? COLORS.primary : COLORS.outline}
-                            />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.emptyModalCard}>
-                  <Text style={styles.emptyModalText}>No medications found to configure.</Text>
-                </View>
-              )}
+                  );
+                })()}
+              </View>
             </ScrollView>
 
-            {/* Modal Footer Actions */}
-            <View style={styles.modalFooter}>
+            {/* Bottom Sheet Actions */}
+            <View style={styles.sheetActionsRow}>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setAlarmModalVisible(false)}
+                style={styles.sheetCancelBtn}
+                onPress={() => setMedSheetVisible(false)}
+                disabled={savingAlarms}
+                activeOpacity={0.8}
               >
-                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+                <Text style={styles.sheetCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.modalSaveBtn}
-                onPress={handleSaveConfiguredAlarms}
+                style={styles.sheetSaveBtn}
+                onPress={handleSaveMedAlarm}
                 disabled={savingAlarms}
+                activeOpacity={0.85}
               >
                 {savingAlarms ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
                   <>
-                    <MaterialIcons name="save" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-                    <Text style={styles.modalSaveBtnText}>Save Configured Alarms</Text>
+                    <MaterialIcons name="check" size={18} color="#ffffff" style={{ marginRight: 6 }} />
+                    <Text style={styles.sheetSaveBtnText}>Save & Set Reminders</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1186,7 +1582,7 @@ export default function PrescriptionDetailsScreen({ route, navigation }) {
                   }
                   const chosen = selectedDate || activePicker.date;
                   const formatted = formatTime12Hour(chosen);
-                  handleUpdateTime(activePicker.medIdx, activePicker.slotIdx, formatted);
+                  handleUpdateSheetSlotTime(activePicker.slotIdx, formatted);
                   setActivePicker(null);
                 }}
               />
@@ -2110,207 +2506,381 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  /* Manage Alarms Modal Styles */
-  modalOverlay: {
+  /* Non-Owner Enable Reminders Button */
+  enableRemindersButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#d97706',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginTop: 12,
+    marginBottom: 8,
+    shadowColor: '#d97706',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  enableRemindersButtonSuccess: {
+    backgroundColor: '#059669',
+    shadowColor: '#059669',
+  },
+  enableRemindersButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  /* Medication Card Alarm Badge */
+  medAlarmCardBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+  },
+  medAlarmCardBadgeActive: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  medAlarmCardBadgeInactive: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  medAlarmBadgeLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    marginRight: 8,
+    gap: 6,
+  },
+  medAlarmCardBadgeTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+  },
+  medAlarmBadgeTextActive: {
+    color: '#065f46',
+  },
+  medAlarmBadgeTextInactive: {
+    color: '#92400e',
+  },
+  medAlarmBadgeRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  medAlarmBadgeAction: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b45309',
+  },
+  medAlarmBadgeActionActive: {
+    color: '#047857',
+  },
+
+  /* Per-Medication Bottom Sheet Modal Styles */
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
     justifyContent: 'flex-end',
   },
-  modalContainer: {
-    backgroundColor: COLORS.surface,
+  bottomSheetContainer: {
+    backgroundColor: '#ffffff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: '85%',
-    paddingBottom: 24,
+    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    elevation: 12,
   },
-  modalHeader: {
+  dragHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#cbd5e1',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  bottomSheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.surfaceHigh,
+    borderBottomColor: '#f1f5f9',
   },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  sheetMedTitleBox: {
     flex: 1,
-  },
-  modalAlarmIconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0, 103, 126, 0.12)',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginRight: 12,
   },
-  modalTitle: {
-    fontSize: 18,
+  sheetTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sheetMedTitle: {
+    fontSize: 17,
     fontWeight: 'bold',
     color: COLORS.onSurface,
+    flex: 1,
   },
-  modalSubtitle: {
+  sheetMedSub: {
     fontSize: 12,
     color: COLORS.onSurfaceVariant,
     marginTop: 2,
   },
-  modalCloseButton: {
+  sheetCloseBtn: {
     padding: 6,
     borderRadius: 18,
-    backgroundColor: COLORS.surfaceHigh,
+    backgroundColor: '#f1f5f9',
   },
-  modalBody: {
+  sheetScrollView: {
     paddingHorizontal: 22,
-    paddingTop: 14,
-    maxHeight: 420,
+    paddingTop: 16,
+    maxHeight: 460,
   },
-  modalDescription: {
-    fontSize: 13,
-    color: COLORS.onSurfaceVariant,
-    marginBottom: 16,
-    lineHeight: 18,
-  },
-  medAlarmCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.surfaceHigh,
-  },
-  medAlarmCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  medAlarmCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+  sheetSectionLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
     color: COLORS.primary,
-    marginLeft: 8,
+    letterSpacing: 1,
+    marginBottom: 4,
   },
-  slotsContainer: {
+  sheetSectionSub: {
+    fontSize: 12,
+    color: COLORS.onSurfaceVariant,
+    marginBottom: 14,
+    lineHeight: 16,
+  },
+  sheetSlotsContainer: {
     gap: 10,
+    marginBottom: 20,
   },
-  slotRow: {
+  sheetSlotRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
   },
-  slotRowActive: {
-    borderColor: 'rgba(0, 103, 126, 0.3)',
-    backgroundColor: 'rgba(0, 103, 126, 0.03)',
+  sheetSlotRowActive: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#86efac',
   },
-  slotRowInactive: {
-    borderColor: COLORS.surfaceHigh,
-    opacity: 0.65,
+  sheetSlotRowInactive: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#e2e8f0',
+    opacity: 0.75,
   },
-  slotToggleTouch: {
+  sheetSlotLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  slotEmoji: {
+  sheetSlotEmoji: {
     fontSize: 18,
     marginHorizontal: 8,
   },
-  slotLabelCol: {
+  sheetSlotTextCol: {
     flex: 1,
   },
-  slotLabel: {
+  sheetSlotLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.onSurfaceVariant,
   },
-  slotLabelActive: {
-    color: COLORS.onSurface,
+  sheetSlotLabelActive: {
+    color: '#15803d',
     fontWeight: '700',
   },
-  slotSubtext: {
+  sheetSlotSubtext: {
     fontSize: 11,
     color: COLORS.outline,
     marginTop: 1,
   },
-  timePickerButton: {
+  sheetTimeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: 'rgba(0, 103, 126, 0.25)',
-    minWidth: 112,
-    justifyContent: 'center',
+    borderColor: '#cbd5e1',
     gap: 4,
+    minWidth: 110,
+    justifyContent: 'center',
   },
-  timePickerButtonDisabled: {
-    borderColor: COLORS.surfaceHigh,
-    backgroundColor: COLORS.surfaceHigh,
-    opacity: 0.6,
+  sheetTimeBtnDisabled: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
   },
-  timePickerText: {
+  sheetTimeBtnText: {
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.primary,
   },
-  timePickerTextDisabled: {
+  sheetTimeBtnTextDisabled: {
     color: COLORS.outline,
   },
-  emptyModalCard: {
-    padding: 24,
+  sheetDurationContainer: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  sheetDurationHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
-  emptyModalText: {
+  sheetDurationTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.onSurface,
+  },
+  sheetDurationBadge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+    backgroundColor: 'rgba(0,103,126,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sheetDurationDescription: {
+    fontSize: 12,
+    color: COLORS.onSurfaceVariant,
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  durationInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  stepperBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  durationInput: {
+    width: 80,
+    height: 42,
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: COLORS.onSurface,
+    marginHorizontal: 12,
+  },
+  durationInputUnit: {
     fontSize: 14,
-    color: COLORS.outline,
+    fontWeight: '600',
+    color: COLORS.onSurfaceVariant,
+    marginLeft: 4,
   },
-  modalFooter: {
+  durationPresetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  presetChip: {
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  presetChipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  presetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.onSurfaceVariant,
+  },
+  presetChipTextActive: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  endDateNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 4,
+    gap: 6,
+  },
+  endDateNoteText: {
+    fontSize: 12,
+    color: '#1e40af',
+    flex: 1,
+    lineHeight: 16,
+  },
+  sheetActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 22,
-    paddingTop: 16,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: COLORS.surfaceHigh,
+    borderTopColor: '#f1f5f9',
     gap: 12,
   },
-  modalCancelBtn: {
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: COLORS.surfaceHigh,
-    justifyContent: 'center',
+  sheetCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#f1f5f9',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalCancelBtnText: {
+  sheetCancelBtnText: {
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.onSurfaceVariant,
   },
-  modalSaveBtn: {
-    flex: 1,
+  sheetSaveBtn: {
+    flex: 2,
     flexDirection: 'row',
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
     backgroundColor: COLORS.primary,
-    justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
+    justifyContent: 'center',
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  modalSaveBtnText: {
+  sheetSaveBtnText: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#ffffff',

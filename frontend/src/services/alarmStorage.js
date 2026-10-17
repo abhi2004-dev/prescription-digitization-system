@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { parseMedicationSlots } from './notificationService';
+import { parseMedicationSlots, parseDurationDays } from './notificationService';
 
 export const USER_ALARMS_STORAGE_KEY = 'user_alarms';
 
@@ -54,35 +54,40 @@ export function formatTime12Hour(date) {
 
 /**
  * Builds initial alarm configurations for a medication using parsed schedule slots.
+ * @param {Object} med - Prescribed medication object
+ * @param {boolean} defaultEnabled - Whether extracted slots should be enabled by default (e.g. true for prescription owner, false for non-owner)
  */
-export function buildInitialMedicationAlarms(med) {
+export function buildInitialMedicationAlarms(med, defaultEnabled = true) {
   const slots = parseMedicationSlots(med);
   const medName = med.drug_name || med.name || med.drug || 'Medication';
   const strength = med.strength || med.dosage || '';
+  const durationDays = parseDurationDays(med.duration);
 
   return {
     medication: medName,
     strength,
+    duration: med.duration || `${durationDays} days`,
+    durationDays: durationDays,
     alarms: [
       {
         slot: 'morning',
         label: 'Morning',
         time: DEFAULT_ALARM_TIMES.morning,
-        enabled: Boolean(slots.morning),
+        enabled: defaultEnabled ? Boolean(slots.morning) : false,
         emoji: '🌅',
       },
       {
         slot: 'afternoon',
         label: 'Afternoon',
         time: DEFAULT_ALARM_TIMES.afternoon,
-        enabled: Boolean(slots.afternoon),
+        enabled: defaultEnabled ? Boolean(slots.afternoon) : false,
         emoji: '☀️',
       },
       {
         slot: 'night',
         label: 'Night',
         time: DEFAULT_ALARM_TIMES.night,
-        enabled: Boolean(slots.night),
+        enabled: defaultEnabled ? Boolean(slots.night) : false,
         emoji: '🌙',
       },
     ],

@@ -1,104 +1,48 @@
-# ==============================================================================
-# PrescriptoAI / Prescription Digitization System .gitignore
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Secrets & Environment Variables
-# ------------------------------------------------------------------------------
-.env
-.env.*
-*.env
-!.env.example
-
-# ------------------------------------------------------------------------------
-# Virtual Environments (Python)
-# ------------------------------------------------------------------------------
-venv/
+# Environments
 .venv/
-backend/venv/
-backend/.venv/
-ENV/
+venv/
 env/
-*.egg-info/
-.eggs/
 
-# ------------------------------------------------------------------------------
-# Python Cache & Bytecode
-# ------------------------------------------------------------------------------
+# Python Cache
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.pytest_cache/
-.coverage
-htmlcov/
 
-# ------------------------------------------------------------------------------
-# Node & Frontend Dependencies / Cache
-# ------------------------------------------------------------------------------
-node_modules/
-frontend/node_modules/
-.expo/
-frontend/.expo/
-.npm
-.eslintcache
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-dist/
-build/
-web-build/
+# Environment Variables (Secrets)
+.env
 
-# ------------------------------------------------------------------------------
-# ML Model Checkpoints, Large Weights & Datasets (Exceeds GitHub 100MB limit)
-# ------------------------------------------------------------------------------
-ml_development/data/
-*.pt
-*.bin
-*.safetensors
-*.onnx
-*.h5
-*.tflite
-*.zip
-*.tar
-*.tar.gz
-*.tgz
-*.rar
-.cache/
-ml_development/data/checkpoints_refinement/
-ml_development/data/clinical_nlp_model_v4/
-ml_development/data/best_model*/
-
-# ------------------------------------------------------------------------------
-# Databases & Local Storage
-# ------------------------------------------------------------------------------
+# Databases
 *.db
-*.sqlite
 *.sqlite3
 backend/mediscan.db
-backend/app/services/database/mediscan.db
-prescripto.db
 
-# ------------------------------------------------------------------------------
-# Temporary Files, Logs & Installers
-# ------------------------------------------------------------------------------
-logs/
-*.log
-temp_uploads/
+# Temporary Uploads & Images
 backend/temp_uploads/
-debug_*.png
-temp_*.png
 backend/temp_*.png
-stitch_prescriptoai_interface_design.zip
-Docker Desktop Installer.exe
-*.exe
+backend/temp_*.jpeg
+*.jpg
+*.jpeg
+*.png
 
-# ------------------------------------------------------------------------------
-# OS & IDE Files
-# ------------------------------------------------------------------------------
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
+# Machine Learning Models & Weights
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+*.pkl
+ml_development/data/clinical_nlp_model_v2/
+ml_development/data/trocr_prescription_final/
+
+# Heavy Archives
+*.zip
+# Machine Learning Models, Weights, and Datasets
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+*.pkl
+*.safetensors
+ml_development/data/
+ml_development/datasets/

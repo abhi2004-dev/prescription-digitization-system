@@ -71,12 +71,11 @@ export async function addMedicationToProfile(matchedDrugData, currentUser = null
     }
 
     // Also merge with currentUser.active_medications if available
-    const userMeds = Array.isArray(currentUser?.active_medications)
-      ? currentUser.active_medications
-      : [];
+    const userMeds = extractDrugNames(currentUser?.active_medications || currentUser?.active_meds || []);
+    const storedNames = extractDrugNames(storedMeds);
 
     const existingSet = new Set(
-      [...storedMeds, ...userMeds].map((m) => String(m).trim().toLowerCase())
+      [...storedNames, ...userMeds].map((m) => m.toLowerCase())
     );
 
     // Identify which medications are new
@@ -90,12 +89,12 @@ export async function addMedicationToProfile(matchedDrugData, currentUser = null
 
     // If all matched drugs are already in the profile, we're done
     if (newMedsToAdd.length === 0) {
-      const currentList = [...new Set([...storedMeds, ...userMeds])];
+      const currentList = [...new Set([...storedNames, ...userMeds])];
       return { success: true, added: [], updatedList: currentList };
     }
 
     // Combine into updated list
-    const combinedList = [...new Set([...storedMeds, ...userMeds, ...newMedsToAdd])];
+    const combinedList = [...new Set([...storedNames, ...userMeds, ...newMedsToAdd])];
 
     // 2. Persist to AsyncStorage silently
     try {

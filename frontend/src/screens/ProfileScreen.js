@@ -11,13 +11,71 @@ import { ACTIVE_MEDICATIONS_KEY } from '../services/profileService';
 
 export default function ProfileScreen({ navigation }) {
   const { user, logout, refreshProfile } = useAuth();
+  const [cachedUser, setCachedUser] = useState(null);
   const [savedAlarms, setSavedAlarms] = useState([]);
   const [loadingAlarms, setLoadingAlarms] = useState(false);
   const [asyncMedications, setAsyncMedications] = useState([]);
 
-  const conditions = user?.current_conditions || [];
-  const serverMedications = user?.active_medications || [];
-  const medications = Array.from(new Set([...serverMedications, ...asyncMedications]));
+  // Load cached user session if context user is temporarily incomplete
+  const loadCachedProfile = async () => {
+    try {
+      const raw = await AsyncStorage.getItem('@user_session');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          setCachedUser(parsed);
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading @user_session in ProfileScreen:', err);
+    }
+  };
+
+  const profileUser = user || cachedUser || {};
+
+  // Defensive helper function: checks if med is a string (return med) or an object (return med.drug_name)
+  const getMedicationName = (med) => {
+    if (!med) return '';
+    if (typeof med === 'string') return med.trim();
+    if (typeof med === 'object') {
+      return (med.drug_name || med.name || med.drug || '').trim();
+    }
+    return String(med).trim();
+  };
+
+  const getConditionName = (c) => {
+    if (!c) return '';
+    if (typeof c === 'string') return c.trim();
+    if (typeof c === 'object') {
+      return (c.name || c.condition || c.title || c.label || '').trim();
+    }
+    return String(c).trim();
+  };
+
+  const rawConditions = Array.isArray(profileUser?.current_conditions)
+    ? profileUser.current_conditions
+    : typeof profileUser?.current_conditions === 'string'
+      ? profileUser.current_conditions.split(',').map((s) => s.trim()).filter(Boolean)
+      : Array.isArray(profileUser?.conditions)
+        ? profileUser.conditions
+        : [];
+  const conditions = Array.from(new Set(rawConditions.map(getConditionName).filter(Boolean)));
+
+  const rawServerMeds = Array.isArray(profileUser?.active_medications)
+    ? profileUser.active_medications
+    : Array.isArray(profileUser?.active_meds)
+      ? profileUser.active_meds
+      : Array.isArray(profileUser?.medications)
+        ? profileUser.medications
+        : typeof profileUser?.active_medications === 'string'
+          ? profileUser.active_medications.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+
+  const rawAsyncMeds = Array.isArray(asyncMedications) ? asyncMedications : [];
+
+  const medications = Array.from(
+    new Set([...rawServerMeds, ...rawAsyncMeds].map(getMedicationName).filter(Boolean))
+  );
 
   const loadAlarms = async () => {
     try {
@@ -49,8 +107,18 @@ export default function ProfileScreen({ navigation }) {
     useCallback(() => {
       loadAlarms();
       loadLocalMedications();
+      loadCachedProfile();
       if (typeof refreshProfile === 'function') {
-        refreshProfile();
+        try {
+          const res = refreshProfile();
+          if (res && typeof res.catch === 'function') {
+            res.catch((err) => {
+              console.warn('[ProfileScreen] Silently handled refreshProfile rejection:', err);
+            });
+          }
+        } catch (err) {
+          console.warn('[ProfileScreen] Error triggering refreshProfile:', err);
+        }
       }
     }, [])
   );
@@ -70,10 +138,10 @@ export default function ProfileScreen({ navigation }) {
             <MaterialIcons name="person" size={40} color={COLORS.primary} />
           </View>
           <View style={styles.infoContainer}>
-            <Text style={styles.name}>{user?.name || 'Registered Patient'}</Text>
-            <Text style={styles.email}>{user?.email || 'patient@example.com'}</Text>
-            {user?.phone ? (
-              <Text style={styles.phone}>{user.phone}</Text>
+            <Text style={styles.name}>{profileUser?.name || 'Registered Patient'}</Text>
+            <Text style={styles.email}>{profileUser?.email || 'patient@example.com'}</Text>
+            {profileUser?.phone ? (
+              <Text style={styles.phone}>{profileUser.phone}</Text>
             ) : null}
             <View style={styles.statusBadge}>
               <Text style={styles.statusText}>Active Profile</Text>
@@ -96,8 +164,8 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.chipsRow}>
             {conditions.length > 0 ? (
               conditions.map((c, i) => (
-                <View key={i} style={styles.conditionChip}>
-                  <Text style={styles.conditionChipText}>{c}</Text>
+                <View key={`cond-chip-${i}`} style={styles.conditionChip}>
+                  <Text style={styles.conditionChipText}>{getConditionName(c)}</Text>
                 </View>
               ))
             ) : (
@@ -113,9 +181,9 @@ export default function ProfileScreen({ navigation }) {
           </View>
           <View style={styles.chipsRow}>
             {medications.length > 0 ? (
-              medications.map((m, i) => (
-                <View key={i} style={styles.medicationChip}>
-                  <Text style={styles.medicationChipText}>{m}</Text>
+              medications.map((med, i) => (
+                <View key={`med-chip-${i}`} style={styles.medicationChip}>
+                  <Text style={styles.medicationChipText}>{getMedicationName(med)}</Text>
                 </View>
               ))
             ) : (
@@ -129,7 +197,12 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.sectionTitle}>Active Medication Alarms</Text>
           <View style={styles.alarmCountBadge}>
             <Text style={styles.alarmCountText}>
-              {savedAlarms.reduce((acc, m) => acc + (m.alarms ? m.alarms.filter((a) => a.enabled).length : 0), 0)} SCHEDULED
+              {(Array.isArray(savedAlarms) ? savedAlarms : []).reduce(
+                (acc, m) =>
+                  acc + (Array.isArray(m?.alarms) ? m.alarms.filter((a) => a && a.enabled).length : 0),
+                0
+              )}{' '}
+              SCHEDULED
             </Text>
           </View>
         </View>
@@ -139,9 +212,15 @@ export default function ProfileScreen({ navigation }) {
             <View style={styles.alarmsLoadingContainer}>
               <ActivityIndicator size="small" color={COLORS.primary} />
             </View>
-          ) : savedAlarms.length > 0 ? (
+          ) : Array.isArray(savedAlarms) && savedAlarms.length > 0 ? (
             savedAlarms.map((item, idx) => {
-              const activeSlots = (item.alarms || []).filter((a) => a.enabled);
+              if (!item) return null;
+              const activeSlots = Array.isArray(item.alarms)
+                ? item.alarms.filter((a) => a && a.enabled)
+                : [];
+              const medNameDisplay = typeof item.medication === 'object'
+                ? getMedicationName(item.medication)
+                : String(item.medication || 'Medication');
               return (
                 <View key={`prof-alarm-${idx}`} style={styles.alarmMedBlock}>
                   <View style={styles.alarmMedHeader}>
@@ -150,8 +229,8 @@ export default function ProfileScreen({ navigation }) {
                         <MaterialIcons name="alarm" size={16} color={COLORS.primary} />
                       </View>
                       <Text style={styles.alarmMedName}>
-                        {item.medication}
-                        {item.strength ? ` (${item.strength})` : ''}
+                        {medNameDisplay}
+                        {item.strength ? ` (${String(item.strength)})` : ''}
                       </Text>
                     </View>
                     <View style={styles.activeSlotsCountPill}>
@@ -165,10 +244,10 @@ export default function ProfileScreen({ navigation }) {
                     {activeSlots.length > 0 ? (
                       activeSlots.map((slot, sIdx) => (
                         <View key={`prof-slot-${sIdx}`} style={styles.alarmSlotBadge}>
-                          <Text style={styles.alarmSlotEmoji}>{slot.emoji || '⏰'}</Text>
+                          <Text style={styles.alarmSlotEmoji}>{String(slot?.emoji || '⏰')}</Text>
                           <View style={styles.alarmSlotTextCol}>
-                            <Text style={styles.alarmSlotLabel}>{slot.label}</Text>
-                            <Text style={styles.alarmSlotTime}>{slot.time}</Text>
+                            <Text style={styles.alarmSlotLabel}>{String(slot?.label || '')}</Text>
+                            <Text style={styles.alarmSlotTime}>{String(slot?.time || '')}</Text>
                           </View>
                         </View>
                       ))

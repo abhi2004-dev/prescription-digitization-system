@@ -45,6 +45,93 @@ export default function UploadScreen({ navigation }) {
       console.warn('[AutoSave] Background medication save warning:', e);
     }
   };
+
+  const getCleanScheduleText = (med) => {
+    if (!med) return null;
+
+    const raw = med.schedule_text;
+    if (raw && typeof raw === 'string') {
+      const trimmed = raw.trim();
+      const hasDosageArtifacts = trimmed.includes('•') ||
+        (med.strength && trimmed.toLowerCase().includes(String(med.strength).toLowerCase())) ||
+        (med.dosage && trimmed.toLowerCase().includes(String(med.dosage).toLowerCase())) ||
+        (med.form && trimmed.toLowerCase().includes(String(med.form).toLowerCase()));
+
+      if (!hasDosageArtifacts && trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+
+    // If med.schedule_text is null (or contains concatenated strength & form), dynamically evaluate med.schedule_slots
+    const slots = med.schedule_slots;
+    if (slots && typeof slots === 'object') {
+      const active = [];
+      if (slots.morning) active.push("Morning");
+      if (slots.afternoon) active.push("Afternoon");
+      if (slots.night) active.push("Night");
+
+      if (active.length === 3) return "Morning, Afternoon & Night";
+      if (active.length === 2) return `${active[0]} & ${active[1]}`;
+      if (active.length === 1) return active[0];
+    }
+
+    // Fallback: evaluate from frequency pattern if like "1-0-1"
+    const freq = med.frequency;
+    if (freq && typeof freq === 'string') {
+      const parts = freq.split('-').map(s => s.trim());
+      if (parts.length === 3) {
+        const morning = parts[0] !== '0' && parts[0] !== '';
+        const afternoon = parts[1] !== '0' && parts[1] !== '';
+        const night = parts[2] !== '0' && parts[2] !== '';
+        const active = [];
+        if (morning) active.push("Morning");
+        if (afternoon) active.push("Afternoon");
+        if (night) active.push("Night");
+
+        if (active.length === 3) return "Morning, Afternoon & Night";
+        if (active.length === 2) return `${active[0]} & ${active[1]}`;
+        if (active.length === 1) return active[0];
+      }
+    }
+
+    return null;
+  };
+
+  const getCleanTimingOrInstruction = (med) => {
+    if (!med) return null;
+    if (med.timing && typeof med.timing === 'string' && med.timing.trim().length > 0) {
+      return med.timing.trim();
+    }
+    const instr = med.instructions || med.dosage_formatted || med.details;
+    if (!instr || typeof instr !== 'string') return null;
+
+    if (instr.includes('•')) {
+      const parts = instr.split('•').map(p => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        const lower = part.toLowerCase();
+        const isStrength = med.strength && lower === String(med.strength).toLowerCase();
+        const isForm = med.form && lower === String(med.form).toLowerCase();
+        const isFreq = med.frequency && lower === String(med.frequency).toLowerCase();
+        const isDuration = med.duration && lower === String(med.duration).toLowerCase();
+        const isGeneric = lower === 'as directed by physician' || lower === 'as directed';
+        
+        if (!isStrength && !isForm && !isFreq && !isDuration && !isGeneric) {
+          return part;
+        }
+      }
+      return null;
+    }
+
+    const trimmed = instr.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower !== 'as directed by physician' && lower !== 'as directed' && trimmed.length > 0) {
+      if ((!med.strength || !lower.includes(String(med.strength).toLowerCase())) &&
+          (!med.form || lower !== String(med.form).toLowerCase())) {
+        return trimmed;
+      }
+    }
+    return null;
+  };
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [currentStage, setCurrentStage] = useState(0);
@@ -807,8 +894,9 @@ const NETWORK_TIMEOUT_MS = 120000; // 120 seconds to survive heavy Vision OCR an
                   const frequency = item.frequency;
                   const duration = item.duration;
                   const timing = item.timing;
-                  const scheduleText = item.schedule_text || item.schedule;
+                  const scheduleText = getCleanScheduleText(item);
                   const scheduleSlots = item.schedule_slots;
+                  const timingDisplay = getCleanTimingOrInstruction(item);
 
                   return (
                     <View key={item.id || index} style={styles.editableMedicineCard}>
@@ -902,9 +990,9 @@ const NETWORK_TIMEOUT_MS = 120000; // 120 seconds to survive heavy Vision OCR an
                             <Text style={[styles.chipText, { color: '#166534' }]}>{duration}</Text>
                           </View>
                         ) : null}
-                        {timing ? (
+                        {timingDisplay ? (
                           <View style={[styles.chip, { backgroundColor: '#f3e8ff' }]}>
-                            <Text style={[styles.chipText, { color: '#6b21a8' }]}>{timing}</Text>
+                            <Text style={[styles.chipText, { color: '#6b21a8' }]}>{timingDisplay}</Text>
                           </View>
                         ) : null}
                       </View>
@@ -1395,9 +1483,10 @@ const NETWORK_TIMEOUT_MS = 120000; // 120 seconds to survive heavy Vision OCR an
                   const frequency = item.frequency;
                   const duration = item.duration;
                   const timing = item.timing;
-                  const scheduleText = item.schedule_text || item.schedule;
+                  const scheduleText = getCleanScheduleText(item);
                   const scheduleSlots = item.schedule_slots;
                   const instructions = item.instructions || item.dosage_formatted || item.details;
+                  const timingDisplay = getCleanTimingOrInstruction(item);
 
                   return (
                     <View key={index} style={styles.medicineCard}>
@@ -1490,9 +1579,9 @@ const NETWORK_TIMEOUT_MS = 120000; // 120 seconds to survive heavy Vision OCR an
                             <Text style={[styles.chipText, { color: '#166534' }]}>{duration}</Text>
                           </View>
                         ) : null}
-                        {timing ? (
+                        {timingDisplay ? (
                           <View style={[styles.chip, { backgroundColor: '#f3e8ff' }]}>
-                            <Text style={[styles.chipText, { color: '#6b21a8' }]}>{timing}</Text>
+                            <Text style={[styles.chipText, { color: '#6b21a8' }]}>{timingDisplay}</Text>
                           </View>
                         ) : null}
                       </View>

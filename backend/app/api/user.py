@@ -94,17 +94,7 @@ def save_user_profile(payload: UserProfileRequest, db: Session = Depends(get_db)
         active_medications=deserialize_json_string(user.active_medications),
     )
 
-@router.get("/profile", response_model=Optional[UserProfileResponse])
+@router.get("/profile")
 def get_user_profile(db: Session = Depends(get_db)):
-    user = db.query(User).first()
-    if not user:
-        return None
-
-    return UserProfileResponse(
-        id=user.id,
-        name=user.name or "",
-        email=user.email or "",
-        phone=user.phone or "",
-        current_conditions=deserialize_json_string(user.current_conditions),
-        active_medications=deserialize_json_string(user.active_medications),
-    )
+    from app.api.routes import get_user_profile as get_profile_safe
+    return get_profile_safe(db)
